@@ -1,0 +1,13 @@
+server:
+  port: 9899
+
+couchdb:
+  uri: ${COUCHDB_URI:http://localhost:5986}
+  username: ${COUCHDB_USER}
+  password: ${COUCHDB_PASSWORD}
+  database: ${COUCHDB_DB_NAME:blog}
+
+logging:
+  level:
+    br.com.taohansen.blog: DEBUG
+    org.springframework.web.reactive: DEBUG

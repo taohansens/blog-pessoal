@@ -67,8 +67,7 @@ public class CouchDbService {
     }
 
     private Post mapToPost(PostsViewResponse.Row row) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> doc = (Map<String, Object>) row.getDoc();
+        Map<String, Object> doc = row.getDoc();
 
         Post post = new Post();
         mapCommonFieldsToPost(doc, post);
@@ -123,7 +122,7 @@ public class CouchDbService {
                     paged.setPage(page);
                     paged.setSize(size);
                     paged.setTotal(totalRows);
-                    paged.setHasNext((page + 1) * size < totalRows);
+                    paged.setHasNext((long) (page + 1) * size < totalRows);
                     return paged;
                 })
                 .onErrorResume(WebClientResponseException.class, ex -> {
@@ -133,9 +132,7 @@ public class CouchDbService {
     }
 
     private PostMetadata mapToMetadata(PostsViewResponse.Row row) {
-        @SuppressWarnings("unchecked")
         Map<String, Object> doc = row.getDoc();
-
         PostMetadata meta = new PostMetadata();
         mapCommonFieldsToMetadata(doc, meta);
         return meta;

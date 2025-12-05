@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   blog-api:
     build:
@@ -7,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: blog-api
     ports:
-      - "9899:9899"
+      - "127.0.0.1:9899:9899"
     environment:
       - COUCHDB_URI=${COUCHDB_URI:-http://couchdb:5984}
       - COUCHDB_USER=${COUCHDB_USER:-admin}
@@ -24,8 +22,6 @@ services:
   couchdb:
     image: couchdb:latest
     container_name: blog-couchdb
-    ports:
-      - "5984:5984"
     environment:
       - COUCHDB_USER=${COUCHDB_USER:-admin}
       - COUCHDB_PASSWORD=${COUCHDB_PASSWORD:-admin}
@@ -42,4 +38,3 @@ volumes:
 networks:
   blog-network:
     driver: bridge
-

@@ -1,10 +1,17 @@
 server:
   port: 9899
 
+spring:
+  web:
+    resources:
+      static-locations: classpath:/none/
+  jackson:
+    default-property-inclusion: non_null
+
 couchdb:
-  uri: ${COUCHDB_URI:http://localhost:5986}
-  username: ${COUCHDB_USER}
-  password: ${COUCHDB_PASSWORD}
+  uri: ${COUCHDB_URI:http://localhost:5984}
+  username: ${COUCHDB_USER:admin}
+  password: ${COUCHDB_PASSWORD:admin}
   database: ${COUCHDB_DB_NAME:blog}
 
 cors:

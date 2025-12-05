@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  blog-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: blog-api
+    ports:
+      - "9899:9899"
+    environment:
+      - COUCHDB_URI=${COUCHDB_URI:-http://couchdb:5984}
+      - COUCHDB_USER=${COUCHDB_USER:-admin}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD:-admin}
+      - COUCHDB_DB_NAME=${COUCHDB_DB_NAME:-blog}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8080}
+      - JAVA_OPTS=${JAVA_OPTS:--Xmx512m -Xms256m}
+    depends_on:
+      - couchdb
+    restart: unless-stopped
+    networks:
+      - blog-network
+
+  couchdb:
+    image: couchdb:latest
+    container_name: blog-couchdb
+    ports:
+      - "5984:5984"
+    environment:
+      - COUCHDB_USER=${COUCHDB_USER:-admin}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD:-admin}
+    volumes:
+      - couchdb-data:/opt/couchdb/data
+    restart: unless-stopped
+    networks:
+      - blog-network
+
+volumes:
+  couchdb-data:
+    driver: local
+
+networks:
+  blog-network:
+    driver: bridge
+

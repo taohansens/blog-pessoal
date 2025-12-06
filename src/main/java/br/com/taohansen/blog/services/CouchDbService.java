@@ -4,33 +4,51 @@ import br.com.taohansen.blog.models.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 
-@SuppressWarnings({"unchecked", "NullableProblems"})
+/**
+ * Serviço responsável pela comunicação com o CouchDB.
+ * Foca exclusivamente em operações de leitura/escrita no banco de dados.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class CouchDbService {
 
+    private static final String VIEW_BY_DATE = "_design/posts/_view/by_date";
+    private static final String VIEW_BY_SLUG = "_design/posts/_view/by_slug";
+    private static final String PARAM_INCLUDE_DOCS = "include_docs=true";
+    private static final String PARAM_SKIP = "skip";
+    private static final String PARAM_LIMIT = "limit";
+    private static final String PARAM_KEY = "key";
+    
+    // Validações de segurança
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final int MIN_PAGE = 0;
+    private static final int MIN_PAGE_SIZE = 1;
+    private static final int MAX_SLUG_LENGTH = 200;
+
     @Value("${couchdb.database:blog}")
     private String databaseName;
     
     private final WebClient couchDbWebClient;
+    private final PostMapper postMapper;
 
+    /**
+     * Lista todos os posts ordenados por data (mais recentes primeiro).
+     * A ordenação é feita pela view do CouchDB (descending), otimizando performance.
+     * @return Flux de posts
+     */
     public Flux<Post> listPosts() {
-        String uri = String.format("/%s/_design/posts/_view/by_date?include_docs=true", databaseName);
+        String uri = buildViewUri(VIEW_BY_DATE, PARAM_INCLUDE_DOCS);
         
         return couchDbWebClient.get()
                 .uri(uri)
@@ -41,81 +59,112 @@ public class CouchDbService {
 
                     return Flux.fromIterable(response.getRows())
                             .filter(row -> row.getDoc() != null)
-                            .map(this::mapToPost)
-                            .sort((p1, p2) -> p2.getDate().compareTo(p1.getDate()));
+                            .map(postMapper::mapToPost)
+                            .filter(post -> post != null);
                 })
                 .doOnNext(post -> log.debug("Post mapeado: {}", post.getTitle()))
                 .onErrorResume(WebClientResponseException.class, ex -> {
-                    log.error("Erro ao buscar posts do CouchDB: {}", ex.getMessage(), ex);
-                    return Flux.error(ex);
+                    log.error("Erro ao buscar posts do CouchDB. Status: {}, Mensagem: {}", 
+                            ex.getStatusCode(), ex.getMessage());
+                    return Flux.error(new RuntimeException("Erro ao buscar posts", ex));
                 });
     }
 
+    /**
+     * Busca um post pelo slug.
+     * Tenta usar uma view específica por slug se disponível, caso contrário busca em todos os posts.
+     * @param slug O slug do post (validado e sanitizado)
+     * @return Mono com o post encontrado ou vazio se não encontrado
+     */
     public Mono<Post> getPostBySlug(String slug) {
-        String uri = String.format("/%s/_design/posts/_view/by_date?include_docs=true", databaseName);
+        // Validação de entrada
+        if (slug == null || slug.isBlank()) {
+            log.warn("Tentativa de buscar post com slug vazio ou nulo");
+            return Mono.error(new IllegalArgumentException("Slug não pode ser vazio"));
+        }
+        
+        // Sanitização e validação de segurança
+        String sanitizedSlug = sanitizeSlug(slug);
+        if (sanitizedSlug.length() > MAX_SLUG_LENGTH) {
+            log.warn("Slug muito longo: {}", sanitizedSlug.length());
+            return Mono.error(new IllegalArgumentException("Slug excede tamanho máximo permitido"));
+        }
+        
+        // Tentar usar view específica por slug
+        String uriBySlug = buildViewUriWithKey(VIEW_BY_SLUG, sanitizedSlug, PARAM_INCLUDE_DOCS);
+        
+        return couchDbWebClient.get()
+                .uri(uriBySlug)
+                .retrieve()
+                .bodyToMono(PostsViewResponse.class)
+                .flatMapMany(response -> Flux.fromIterable(response.getRows())
+                        .filter(row -> row.getDoc() != null)
+                        .map(postMapper::mapToPost)
+                        .filter(post -> post != null && sanitizedSlug.equals(post.getSlug())))
+                .next()
+                .switchIfEmpty(Mono.defer(() -> {
+                    // Fallback: buscar em todos os posts se view por slug não existir
+                    log.debug("View por slug não retornou resultados, tentando busca completa para slug: {}", sanitizedSlug);
+                    return searchPostBySlugInAllPosts(sanitizedSlug);
+                }))
+                .doOnNext(post -> log.info("Post carregado: {}", post.getTitle()))
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    if (ex.getStatusCode().value() == 404) {
+                        // View não existe, usar fallback
+                        log.debug("View por slug não encontrada, usando busca completa");
+                        return searchPostBySlugInAllPosts(sanitizedSlug);
+                    }
+                    log.error("Erro ao buscar post do CouchDB. Status: {}, Slug: {}", 
+                            ex.getStatusCode(), sanitizedSlug);
+                    return Mono.error(new RuntimeException("Erro ao buscar post", ex));
+                });
+    }
+    
+    /**
+     * Busca um post pelo slug em todos os posts (fallback quando view específica não existe).
+     * @param slug O slug sanitizado
+     * @return Mono com o post encontrado ou vazio
+     */
+    private Mono<Post> searchPostBySlugInAllPosts(String slug) {
+        String uri = buildViewUri(VIEW_BY_DATE, PARAM_INCLUDE_DOCS);
         
         return couchDbWebClient.get()
                 .uri(uri)
                 .retrieve()
                 .bodyToMono(PostsViewResponse.class)
-                .flatMapMany(response -> {
-                    log.debug("Buscando post com slug: {}", slug);
-                    return Flux.fromIterable(response.getRows())
-                            .filter(row -> row.getDoc() != null)
-                            .map(this::mapToPost)
-                            .filter(post -> slug.equals(post.getSlug()));
-                })
+                .flatMapMany(response -> Flux.fromIterable(response.getRows())
+                        .filter(row -> row.getDoc() != null)
+                        .map(postMapper::mapToPost)
+                        .filter(post -> post != null && slug.equals(post.getSlug())))
                 .next()
-                .doOnNext(post -> log.info("Post carregado: {}", post.getTitle()))
                 .switchIfEmpty(Mono.defer(() -> {
                     log.debug("Post não encontrado com slug: {}", slug);
                     return Mono.empty();
-                }))
-                .onErrorResume(WebClientResponseException.class, ex -> {
-                    log.error("Erro ao buscar post do CouchDB: {}", ex.getMessage(), ex);
-                    return Mono.error(ex);
-                });
+                }));
     }
 
-    private Post mapToPost(PostsViewResponse.Row row) {
-        Map<String, Object> doc = row.getDoc();
 
-        Post post = new Post();
-        mapCommonFieldsToPost(doc, post);
-        post.setContent((String) doc.get("content"));
-        return post;
-    }
-    
-    private void mapCommonFieldsToPost(Map<String, Object> doc, Post post) {
-        post.setId((String) doc.get("id"));
-        post.setTitle((String) doc.get("title"));
-        post.setSlug((String) doc.get("slug"));
-        post.setSummary((String) doc.get("summary"));
-        post.setTags((List<String>) doc.get("tags"));
-        
-        String dateStr = (String) doc.get("date");
-        if (dateStr != null) {
-            post.setDate(LocalDate.parse(dateStr));
-        }
-    }
-    
-    private void mapCommonFieldsToMetadata(Map<String, Object> doc, PostMetadata meta) {
-        meta.setId((String) doc.get("id"));
-        meta.setTitle((String) doc.get("title"));
-        meta.setSlug((String) doc.get("slug"));
-        meta.setSummary((String) doc.get("summary"));
-        meta.setTags((List<String>) doc.get("tags"));
-        
-        String dateStr = (String) doc.get("date");
-        if (dateStr != null) {
-            meta.setDate(LocalDate.parse(dateStr));
-        }
-    }
-
+    /**
+     * Lista posts paginados.
+     * @param page Número da página (0-indexed, validado)
+     * @param size Tamanho da página (validado entre MIN_PAGE_SIZE e MAX_PAGE_SIZE)
+     * @return Mono com resposta paginada
+     */
     public Mono<PagedPostsResponse> listPostsPaged(int page, int size) {
+        // Validação de entrada
+        if (page < MIN_PAGE) {
+            log.warn("Página inválida: {}", page);
+            return Mono.error(new IllegalArgumentException("Página deve ser >= 0"));
+        }
+        
+        if (size < MIN_PAGE_SIZE || size > MAX_PAGE_SIZE) {
+            log.warn("Tamanho de página inválido: {}", size);
+            return Mono.error(new IllegalArgumentException(
+                    String.format("Tamanho da página deve estar entre %d e %d", MIN_PAGE_SIZE, MAX_PAGE_SIZE)));
+        }
+        
         int skip = page * size;
-        String uri = String.format("/%s/_design/posts/_view/by_date?include_docs=true&skip=%d&limit=%d", 
-                databaseName, skip, size);
+        String uri = buildViewUriWithPagination(VIEW_BY_DATE, skip, size, PARAM_INCLUDE_DOCS);
 
         return couchDbWebClient.get()
                 .uri(uri)
@@ -124,7 +173,8 @@ public class CouchDbService {
                 .map(response -> {
                     List<PostMetadata> metadataList = response.getRows().stream()
                             .filter(row -> row.getDoc() != null)
-                            .map(this::mapToMetadata)
+                            .map(postMapper::mapToMetadata)
+                            .filter(meta -> meta != null)
                             .toList();
 
                     long totalRows = response.getTotalRows();
@@ -137,25 +187,69 @@ public class CouchDbService {
                     return paged;
                 })
                 .onErrorResume(WebClientResponseException.class, ex -> {
-                    log.error("Erro ao buscar posts paginados do CouchDB: {}", ex.getMessage(), ex);
-                    return Mono.error(ex);
+                    log.error("Erro ao buscar posts paginados do CouchDB. Status: {}, Página: {}, Tamanho: {}", 
+                            ex.getStatusCode(), page, size);
+                    return Mono.error(new RuntimeException("Erro ao buscar posts paginados", ex));
                 });
-    }
-
-    private PostMetadata mapToMetadata(PostsViewResponse.Row row) {
-        Map<String, Object> doc = row.getDoc();
-        PostMetadata meta = new PostMetadata();
-        mapCommonFieldsToMetadata(doc, meta);
-        return meta;
     }
 
     /**
      * Verifica se um slug já existe no banco de dados.
-     * @param slug O slug a ser verificado
+     * Otimizado para usar view específica ao invés de buscar post completo.
+     * @param slug O slug a ser verificado (validado e sanitizado)
      * @param excludePostId ID do post a ser excluído da verificação (útil para edição)
      * @return Mono<Boolean> true se o slug existe, false caso contrário
      */
     public Mono<Boolean> slugExists(String slug, String excludePostId) {
+        if (slug == null || slug.isBlank()) {
+            return Mono.just(false);
+        }
+        
+        String sanitizedSlug = sanitizeSlug(slug);
+        
+        // Tentar usar view específica por slug
+        String uriBySlug = buildViewUriWithKey(VIEW_BY_SLUG, sanitizedSlug);
+        
+        return couchDbWebClient.get()
+                .uri(uriBySlug)
+                .retrieve()
+                .bodyToMono(PostsViewResponse.class)
+                .map(response -> {
+                    if (response.getRows() == null || response.getRows().isEmpty()) {
+                        return false;
+                    }
+                    
+                    // Verificar se o slug pertence a outro post (não o que está sendo editado)
+                    return response.getRows().stream()
+                            .filter(row -> row.getDoc() != null)
+                            .anyMatch(row -> {
+                                String postId = (String) row.getDoc().get("id");
+                                // Se estamos editando, ignorar se é o mesmo post
+                                if (excludePostId != null && excludePostId.equals(postId)) {
+                                    return false;
+                                }
+                                return true;
+                            });
+                })
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    if (ex.getStatusCode().value() == 404) {
+                        // View não existe, usar fallback
+                        return checkSlugExistsFallback(sanitizedSlug, excludePostId);
+                    }
+                    log.debug("Erro ao verificar slug, assumindo que não existe: {}", ex.getMessage());
+                    return Mono.just(false);
+                })
+                .switchIfEmpty(Mono.just(false))
+                .defaultIfEmpty(false);
+    }
+    
+    /**
+     * Fallback para verificar se slug existe quando view específica não está disponível.
+     * @param slug O slug sanitizado
+     * @param excludePostId ID do post a ser excluído
+     * @return Mono<Boolean> true se existe, false caso contrário
+     */
+    private Mono<Boolean> checkSlugExistsFallback(String slug, String excludePostId) {
         return getPostBySlug(slug)
                 .map(post -> {
                     // Se estamos editando um post, ignorar se o slug pertence ao mesmo post
@@ -164,130 +258,118 @@ public class CouchDbService {
                     }
                     return true;
                 })
-                .defaultIfEmpty(false);
+                .defaultIfEmpty(false)
+                .onErrorReturn(false);
     }
-
+    
+    // ========== Métodos auxiliares para construção de URIs ==========
     /**
-     * Gera um slug único a partir de um título.
-     * Primeiro gera o slug base do título, depois verifica se é único e adiciona hash se necessário.
-     * @param title O título do post
-     * @param excludePostId ID do post a ser excluído da verificação (útil para edição, pode ser null)
-     * @return Mono<String> O slug único gerado
+     * Constrói URI para uma view com parâmetros opcionais.
+     * @param viewPath Caminho da view
+     * @param params Parâmetros adicionais
+     * @return URI sanitizada
      */
-    public Mono<String> generateUniqueSlugFromTitle(String title, String excludePostId) {
-        String baseSlug = generateSlugFromTitle(title);
-        if (baseSlug.isBlank()) {
-            // Se não conseguir gerar slug do título, usar hash do título completo
-            baseSlug = "post-" + generateShortHash(title != null ? title : String.valueOf(System.currentTimeMillis()));
+    private String buildViewUri(String viewPath, String... params) {
+        StringBuilder uri = new StringBuilder("/")
+                .append(sanitizeDatabaseName(databaseName))
+                .append("/")
+                .append(viewPath);
+        
+        if (params.length > 0) {
+            uri.append("?");
+            uri.append(String.join("&", params));
         }
-        return generateUniqueSlug(baseSlug, excludePostId);
+        
+        return uri.toString();
     }
-
+    
     /**
-     * Gera um slug único. Se o slug base já existir, adiciona um hash curto no final.
-     * @param baseSlug O slug base (geralmente gerado a partir do título)
-     * @param excludePostId ID do post a ser excluído da verificação (útil para edição)
-     * @return Mono<String> O slug único gerado
+     * Constrói URI para uma view com paginação.
+     * @param viewPath Caminho da view
+     * @param skip Número de registros a pular
+     * @param limit Limite de registros
+     * @param params Parâmetros adicionais
+     * @return URI sanitizada
      */
-    public Mono<String> generateUniqueSlug(String baseSlug, String excludePostId) {
-        return slugExists(baseSlug, excludePostId)
-                .flatMap(exists -> {
-                    if (!exists) {
-                        log.debug("Slug único gerado: {}", baseSlug);
-                        return Mono.just(baseSlug);
-                    }
-                    
-                    // Slug existe, gerar um novo com hash
-                    String hash = generateShortHash(baseSlug);
-                    String uniqueSlug = baseSlug + "-" + hash;
-                    
-                    log.debug("Slug original '{}' já existe, gerando slug único: {}", baseSlug, uniqueSlug);
-                    
-                    // Verificar recursivamente se o slug com hash também existe (improvável, mas possível)
-                    return slugExists(uniqueSlug, excludePostId)
-                            .flatMap(hashExists -> {
-                                if (!hashExists) {
-                                    return Mono.just(uniqueSlug);
-                                }
-                                // Se por acaso o hash também existir, adicionar timestamp
-                                String timestampHash = generateShortHash(baseSlug + System.currentTimeMillis());
-                                return Mono.just(baseSlug + "-" + timestampHash);
-                            });
-                });
-    }
-
-    /**
-     * Gera um hash curto (6 caracteres) a partir de uma string.
-     * @param input A string de entrada
-     * @return Hash curto em hexadecimal
-     */
-    private String generateShortHash(String input) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] hashBytes = md.digest(input.getBytes(StandardCharsets.UTF_8));
-            
-            // Converter para hexadecimal e pegar os primeiros 6 caracteres
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : hashBytes) {
-                String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) {
-                    hexString.append('0');
-                }
-                hexString.append(hex);
-            }
-            
-            return hexString.substring(0, 6);
-        } catch (NoSuchAlgorithmException e) {
-            log.error("Erro ao gerar hash: {}", e.getMessage(), e);
-            // Fallback: usar hash simples baseado no hashCode
-            return Integer.toHexString(input.hashCode()).substring(0, Math.min(6, Integer.toHexString(input.hashCode()).length()));
+    private String buildViewUriWithPagination(String viewPath, int skip, int limit, String... params) {
+        StringBuilder uri = new StringBuilder("/")
+                .append(sanitizeDatabaseName(databaseName))
+                .append("/")
+                .append(viewPath)
+                .append("?");
+        
+        if (params.length > 0) {
+            uri.append(String.join("&", params));
+            uri.append("&");
         }
+        
+        uri.append(PARAM_SKIP).append("=").append(skip);
+        uri.append("&").append(PARAM_LIMIT).append("=").append(limit);
+        
+        return uri.toString();
     }
-
+    
     /**
-     * Gera um slug base a partir de um título.
-     * Remove acentos, converte para minúsculas, substitui espaços por hífens e remove caracteres especiais.
-     * @param title O título a ser convertido em slug
-     * @return O slug base gerado
+     * Constrói URI para uma view com key específica.
+     * @param viewPath Caminho da view
+     * @param key A chave a ser buscada (será URL encoded como JSON string)
+     * @param params Parâmetros adicionais
+     * @return URI sanitizada
      */
-    public String generateSlugFromTitle(String title) {
-        if (title == null || title.isBlank()) {
+    private String buildViewUriWithKey(String viewPath, String key, String... params) {
+        StringBuilder uri = new StringBuilder("/")
+                .append(sanitizeDatabaseName(databaseName))
+                .append("/")
+                .append(viewPath)
+                .append("?");
+        
+        if (params.length > 0) {
+            uri.append(String.join("&", params));
+            uri.append("&");
+        }
+        
+        // CouchDB espera a key como JSON string, então precisamos codificar corretamente
+        // Formato: key="valor" (JSON string)
+        String jsonKey = "\"" + key.replace("\"", "\\\"") + "\"";
+        String encodedKey = URLEncoder.encode(jsonKey, StandardCharsets.UTF_8)
+                .replace("+", "%20") // Espaços devem ser %20, não +
+                .replace("%21", "!") // Manter alguns caracteres não codificados para JSON
+                .replace("%27", "'");
+        
+        uri.append(PARAM_KEY).append("=").append(encodedKey);
+        
+        return uri.toString();
+    }
+    
+    // ========== Métodos auxiliares de sanitização ==========
+    /**
+     * Sanitiza o nome do banco de dados para prevenir path traversal.
+     * @param dbName Nome do banco
+     * @return Nome sanitizado
+     */
+    private String sanitizeDatabaseName(String dbName) {
+        if (dbName == null || dbName.isBlank()) {
+            throw new IllegalArgumentException("Nome do banco de dados não pode ser vazio");
+        }
+        // Remove caracteres perigosos
+        return dbName.replaceAll("[^a-zA-Z0-9_$()+/-]", "");
+    }
+    
+    /**
+     * Sanitiza um slug removendo caracteres perigosos.
+     * @param slug O slug a ser sanitizado
+     * @return Slug sanitizado
+     */
+    private String sanitizeSlug(String slug) {
+        if (slug == null || slug.isBlank()) {
             return "";
         }
-        
-        // Normalizar: remover acentos, converter para minúsculas
-        String normalized = normalizeString(title);
-        
-        // Substituir espaços e caracteres especiais por hífen
-        String slug = normalized
+        // Remove caracteres que podem causar problemas em URLs
+        return slug
                 .toLowerCase()
                 .trim()
-                .replaceAll("[^a-z0-9\\s-]", "") // Remove caracteres especiais exceto espaços e hífens
-                .replaceAll("\\s+", "-") // Substitui espaços múltiplos por um único hífen
-                .replaceAll("-+", "-") // Remove hífens múltiplos
-                .replaceAll("^-|-$", ""); // Remove hífens no início e fim
-        
-        return slug;
-    }
-
-    /**
-     * Normaliza uma string removendo acentos.
-     * @param str A string a ser normalizada
-     * @return String normalizada sem acentos
-     */
-    private String normalizeString(String str) {
-        if (str == null) {
-            return "";
-        }
-        
-        // Mapeamento básico de acentos (pode ser expandido)
-        return str
-                .replace("á", "a").replace("à", "a").replace("ã", "a").replace("â", "a").replace("ä", "a")
-                .replace("é", "e").replace("è", "e").replace("ê", "e").replace("ë", "e")
-                .replace("í", "i").replace("ì", "i").replace("î", "i").replace("ï", "i")
-                .replace("ó", "o").replace("ò", "o").replace("õ", "o").replace("ô", "o").replace("ö", "o")
-                .replace("ú", "u").replace("ù", "u").replace("û", "u").replace("ü", "u")
-                .replace("ç", "c")
-                .replace("ñ", "n");
+                .replaceAll("[^a-z0-9-]", "")
+                .replaceAll("-+", "-")
+                .replaceAll("^-|-$", "");
     }
 }

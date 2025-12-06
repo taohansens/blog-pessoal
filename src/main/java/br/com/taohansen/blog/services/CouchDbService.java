@@ -232,10 +232,7 @@ public class CouchDbService {
                                     postId = (String) row.getDoc().get("id");
                                 }
                                 // Se estamos editando, ignorar se é o mesmo post
-                                if (excludePostId != null && excludePostId.equals(postId)) {
-                                    return false;
-                                }
-                                return true;
+                                return excludePostId == null || !excludePostId.equals(postId);
                             });
                 })
                 .onErrorResume(WebClientResponseException.class, ex -> {
@@ -263,10 +260,7 @@ public class CouchDbService {
         return getPostBySlug(slug)
                 .map(post -> {
                     // Se estamos editando um post, ignorar se o slug pertence ao mesmo post
-                    if (excludePostId != null && excludePostId.equals(post.getId())) {
-                        return false;
-                    }
-                    return true;
+                    return excludePostId == null || !excludePostId.equals(post.getId());
                 })
                 .defaultIfEmpty(false)
                 .onErrorReturn(false);

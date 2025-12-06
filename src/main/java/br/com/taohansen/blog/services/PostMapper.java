@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 
 /**
  * Componente responsável pelo mapeamento de dados do CouchDB para modelos de domínio.
@@ -20,6 +21,7 @@ import java.util.Map;
 public class PostMapper {
 
     private static final String FIELD_ID = "id";
+    private static final String FIELD_ID_ALT = "_id";
     private static final String FIELD_REV = "_rev";
     private static final String FIELD_TITLE = "title";
     private static final String FIELD_SLUG = "slug";
@@ -73,8 +75,14 @@ public class PostMapper {
      * @param target O objeto de destino (Post ou PostMetadata)
      */
     private void mapCommonFields(Map<String, Object> doc, Object target) {
+        // Buscar ID - pode ser "id" (em views) ou "_id" (em documentos diretos)
+        String id = getStringSafely(doc, FIELD_ID_ALT);
+        if (id == null) {
+            id = getStringSafely(doc, FIELD_ID);
+        }
+        
         if (target instanceof Post post) {
-            post.setId(getStringSafely(doc, FIELD_ID));
+            post.setId(id);
             post.setRevision(getStringSafely(doc, FIELD_REV));
             post.setTitle(getStringSafely(doc, FIELD_TITLE));
             post.setSlug(getStringSafely(doc, FIELD_SLUG));
@@ -82,7 +90,7 @@ public class PostMapper {
             post.setTags(getListSafely(doc, FIELD_TAGS));
             post.setDate(parseDateSafely(doc, FIELD_DATE));
         } else if (target instanceof PostMetadata meta) {
-            meta.setId(getStringSafely(doc, FIELD_ID));
+            meta.setId(id);
             meta.setTitle(getStringSafely(doc, FIELD_TITLE));
             meta.setSlug(getStringSafely(doc, FIELD_SLUG));
             meta.setSummary(getStringSafely(doc, FIELD_SUMMARY));
@@ -160,6 +168,57 @@ public class PostMapper {
             log.warn("Erro ao fazer parse da data '{}' do campo '{}': {}", dateStr, key, e.getMessage());
             return null;
         }
+    }
+    
+    /**
+     * Mapeia um documento do CouchDB diretamente para um Post.
+     * Usado quando buscamos um documento por ID.
+     * @param doc O documento do CouchDB
+     * @return Post mapeado
+     */
+    public Post mapDocumentToPost(Map<String, Object> doc) {
+        if (doc == null) {
+            log.warn("Tentativa de mapear post com documento nulo");
+            return null;
+        }
+
+        Post post = new Post();
+        mapCommonFields(doc, post);
+        post.setContent(getStringSafely(doc, FIELD_CONTENT));
+        
+        return post;
+    }
+    
+    /**
+     * Mapeia um Post para um Map (documento do CouchDB).
+     * @param post O post a ser convertido
+     * @return Map representando o documento do CouchDB
+     */
+    public Map<String, Object> mapPostToDocument(Post post) {
+        if (post == null) {
+            throw new IllegalArgumentException("Post não pode ser nulo");
+        }
+        
+        Map<String, Object> doc = new java.util.HashMap<>();
+        
+        // Campos obrigatórios do CouchDB
+        if (post.getId() != null) {
+            doc.put("_id", post.getId());
+        }
+        if (post.getRevision() != null) {
+            doc.put("_rev", post.getRevision());
+        }
+        
+        // Campos do post
+        doc.put("type", post.getType() != null ? post.getType() : "blog_post");
+        doc.put("title", post.getTitle());
+        doc.put("slug", post.getSlug());
+        doc.put("date", post.getDate() != null ? post.getDate().toString() : null);
+        doc.put("tags", post.getTags() != null ? post.getTags() : new ArrayList<>());
+        doc.put("summary", post.getSummary());
+        doc.put("content", post.getContent());
+        
+        return doc;
     }
 }
 

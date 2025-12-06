@@ -318,13 +318,13 @@ public class PostsController {
                     log.warn("Erro de validação ao deletar post: {}", ex.getMessage());
                     return Mono.just(ResponseEntity
                             .badRequest()
-                            .<Void>build());
+                            .build());
                 })
                 .onErrorResume(ex -> {
                     log.error("Erro ao deletar post", ex);
                     return Mono.just(ResponseEntity
                             .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                            .<Void>build());
+                            .build());
                 });
     }
 }

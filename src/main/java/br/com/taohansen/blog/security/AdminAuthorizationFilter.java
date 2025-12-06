@@ -42,7 +42,7 @@ public class AdminAuthorizationFilter implements WebFilter {
             return ReactiveSecurityContextHolder.getContext()
                     .map(SecurityContext::getAuthentication)
                     .flatMap(authentication -> {
-                        if (authentication == null || !authentication.isAuthenticated()) {
+                        if (!authentication.isAuthenticated()) {
                             log.warn("Tentativa de acesso não autenticado: {} {}", method, path);
                             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
                             return exchange.getResponse().setComplete();
@@ -50,7 +50,10 @@ public class AdminAuthorizationFilter implements WebFilter {
 
                         if (authentication instanceof OAuth2AuthenticationToken oauth2Token) {
                             OAuth2User oauth2User = oauth2Token.getPrincipal();
-                            String email = getEmailFromOAuth2User(oauth2User);
+                            String email = null;
+                            if (oauth2User != null) {
+                                email = getEmailFromOAuth2User(oauth2User);
+                            }
 
                             if (!adminService.isAdmin(email)) {
                                 log.warn("Tentativa de acesso não autorizado: {} {} por usuário: {}", 

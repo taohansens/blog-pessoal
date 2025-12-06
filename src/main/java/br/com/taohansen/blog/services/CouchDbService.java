@@ -13,6 +13,7 @@ import reactor.core.publisher.Mono;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Serviço responsável pela comunicação com o CouchDB.
@@ -225,7 +226,11 @@ public class CouchDbService {
                     return response.getRows().stream()
                             .filter(row -> row.getDoc() != null)
                             .anyMatch(row -> {
-                                String postId = (String) row.getDoc().get("id");
+                                // Buscar ID - pode ser "id" (em views) ou "_id" (em documentos diretos)
+                                String postId = (String) row.getDoc().get("_id");
+                                if (postId == null) {
+                                    postId = (String) row.getDoc().get("id");
+                                }
                                 // Se estamos editando, ignorar se é o mesmo post
                                 if (excludePostId != null && excludePostId.equals(postId)) {
                                     return false;
@@ -265,6 +270,222 @@ public class CouchDbService {
                 })
                 .defaultIfEmpty(false)
                 .onErrorReturn(false);
+    }
+    
+    /**
+     * Busca um post pelo ID.
+     * @param id O ID do post
+     * @return Mono com o post encontrado ou vazio se não encontrado
+     */
+    public Mono<Post> getPostById(String id) {
+        if (id == null || id.isBlank()) {
+            log.warn("Tentativa de buscar post com ID vazio ou nulo");
+            return Mono.error(new IllegalArgumentException("ID não pode ser vazio"));
+        }
+        
+        String sanitizedId = sanitizeDocumentId(id);
+        String uri = buildDocumentUri(sanitizedId);
+        
+        return couchDbWebClient.get()
+                .uri(uri)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .map(doc -> postMapper.mapDocumentToPost(doc))
+                .filter(post -> post != null)
+                .doOnNext(post -> log.info("Post carregado por ID: {}", post.getTitle()))
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    int statusCode = ex.getStatusCode().value();
+                    if (statusCode == 404) {
+                        log.debug("Post não encontrado com ID: {}", sanitizedId);
+                        return Mono.empty();
+                    }
+                    log.error("Erro ao buscar post do CouchDB. Status: {}, ID: {}", 
+                            ex.getStatusCode(), sanitizedId);
+                    return Mono.error(new RuntimeException("Erro ao buscar post", ex));
+                });
+    }
+    
+    /**
+     * Cria um novo post no CouchDB.
+     * @param post O post a ser criado (deve ter ID gerado)
+     * @return Mono com o post criado (incluindo _rev)
+     */
+    public Mono<Post> createPost(Post post) {
+        if (post == null) {
+            return Mono.error(new IllegalArgumentException("Post não pode ser nulo"));
+        }
+        
+        if (post.getId() == null || post.getId().isBlank()) {
+            return Mono.error(new IllegalArgumentException("ID do post não pode ser vazio"));
+        }
+        
+        String sanitizedId = sanitizeDocumentId(post.getId());
+        String uri = buildDocumentUri(sanitizedId);
+        
+        // Converter Post para Map para enviar ao CouchDB
+        Map<String, Object> doc = postMapper.mapPostToDocument(post);
+        
+        return couchDbWebClient.put()
+                .uri(uri)
+                .bodyValue(doc)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .map(response -> {
+                    // Atualizar _rev no post
+                    String rev = (String) response.get("rev");
+                    post.setRevision(rev);
+                    log.info("Post criado com sucesso: {} (rev: {})", post.getTitle(), rev);
+                    return post;
+                })
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    int statusCode = ex.getStatusCode().value();
+                    if (statusCode == 409) {
+                        log.error("Conflito ao criar post: ID já existe: {}", sanitizedId);
+                        return Mono.error(new IllegalArgumentException("Post com este ID já existe"));
+                    }
+                    log.error("Erro ao criar post no CouchDB. Status: {}, ID: {}", 
+                            ex.getStatusCode(), sanitizedId, ex);
+                    return Mono.error(new RuntimeException("Erro ao criar post", ex));
+                });
+    }
+    
+    /**
+     * Atualiza um post existente no CouchDB.
+     * @param post O post a ser atualizado (deve ter ID e _rev)
+     * @return Mono com o post atualizado (incluindo nova _rev)
+     */
+    public Mono<Post> updatePost(Post post) {
+        if (post == null) {
+            return Mono.error(new IllegalArgumentException("Post não pode ser nulo"));
+        }
+        
+        if (post.getId() == null || post.getId().isBlank()) {
+            return Mono.error(new IllegalArgumentException("ID do post não pode ser vazio"));
+        }
+        
+        if (post.getRevision() == null || post.getRevision().isBlank()) {
+            return Mono.error(new IllegalArgumentException("Revisão do post não pode ser vazia. Busque o post primeiro para obter a revisão atual."));
+        }
+        
+        String sanitizedId = sanitizeDocumentId(post.getId());
+        String uri = buildDocumentUri(sanitizedId);
+        
+        // Converter Post para Map para enviar ao CouchDB
+        Map<String, Object> doc = postMapper.mapPostToDocument(post);
+        
+        return couchDbWebClient.put()
+                .uri(uri)
+                .bodyValue(doc)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .map(response -> {
+                    // Atualizar _rev no post
+                    String rev = (String) response.get("rev");
+                    post.setRevision(rev);
+                    log.info("Post atualizado com sucesso: {} (rev: {})", post.getTitle(), rev);
+                    return post;
+                })
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    int statusCode = ex.getStatusCode().value();
+                    if (statusCode == 409) {
+                        log.error("Conflito ao atualizar post: Revisão desatualizada. ID: {}", sanitizedId);
+                        return Mono.error(new IllegalArgumentException("Post foi modificado por outro processo. Busque a versão mais recente e tente novamente."));
+                    }
+                    if (statusCode == 404) {
+                        log.error("Post não encontrado para atualização. ID: {}", sanitizedId);
+                        return Mono.error(new IllegalArgumentException("Post não encontrado"));
+                    }
+                    log.error("Erro ao atualizar post no CouchDB. Status: {}, ID: {}", 
+                            ex.getStatusCode(), sanitizedId, ex);
+                    return Mono.error(new RuntimeException("Erro ao atualizar post", ex));
+                });
+    }
+    
+    /**
+     * Deleta um post do CouchDB.
+     * @param id ID do post a ser deletado
+     * @param revision Revisão do post (necessária para deletar no CouchDB)
+     * @return Mono<Void> que completa quando o post é deletado
+     */
+    public Mono<Void> deletePost(String id, String revision) {
+        if (id == null || id.isBlank()) {
+            return Mono.error(new IllegalArgumentException("ID do post não pode ser vazio"));
+        }
+        
+        if (revision == null || revision.isBlank()) {
+            return Mono.error(new IllegalArgumentException("Revisão do post não pode ser vazia. Busque o post primeiro para obter a revisão atual."));
+        }
+        
+        String sanitizedId = sanitizeDocumentId(id);
+        String uri = buildDocumentUriWithRevision(sanitizedId, revision);
+        
+        return couchDbWebClient.delete()
+                .uri(uri)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .then()
+                .doOnSuccess(v -> log.info("Post deletado com sucesso. ID: {}", sanitizedId))
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    int statusCode = ex.getStatusCode().value();
+                    if (statusCode == 404) {
+                        log.error("Post não encontrado para deleção. ID: {}", sanitizedId);
+                        return Mono.error(new IllegalArgumentException("Post não encontrado"));
+                    }
+                    if (statusCode == 409) {
+                        log.error("Conflito ao deletar post: Revisão desatualizada. ID: {}", sanitizedId);
+                        return Mono.error(new IllegalArgumentException("Post foi modificado por outro processo. Busque a versão mais recente e tente novamente."));
+                    }
+                    log.error("Erro ao deletar post no CouchDB. Status: {}, ID: {}", 
+                            ex.getStatusCode(), sanitizedId, ex);
+                    return Mono.error(new RuntimeException("Erro ao deletar post", ex));
+                });
+    }
+    
+    /**
+     * Constrói URI para um documento específico.
+     * @param documentId ID do documento
+     * @return URI sanitizada
+     */
+    private String buildDocumentUri(String documentId) {
+        return "/" + sanitizeDatabaseName(databaseName) + "/" + sanitizeDocumentId(documentId);
+    }
+    
+    /**
+     * Constrói URI para um documento específico com revisão (usado para DELETE).
+     * @param documentId ID do documento
+     * @param revision Revisão do documento
+     * @return URI sanitizada com parâmetro rev
+     */
+    private String buildDocumentUriWithRevision(String documentId, String revision) {
+        String sanitizedRevision = sanitizeRevision(revision);
+        return "/" + sanitizeDatabaseName(databaseName) + "/" + sanitizeDocumentId(documentId) 
+                + "?rev=" + sanitizedRevision;
+    }
+    
+    /**
+     * Sanitiza uma revisão do CouchDB.
+     * @param revision A revisão a ser sanitizada
+     * @return Revisão sanitizada
+     */
+    private String sanitizeRevision(String revision) {
+        if (revision == null || revision.isBlank()) {
+            throw new IllegalArgumentException("Revisão não pode ser vazia");
+        }
+        // Revisões do CouchDB são números seguidos de hífen e hash
+        return revision.replaceAll("[^0-9a-zA-Z-]", "");
+    }
+    
+    /**
+     * Sanitiza um ID de documento para prevenir path traversal.
+     * @param docId ID do documento
+     * @return ID sanitizado
+     */
+    private String sanitizeDocumentId(String docId) {
+        if (docId == null || docId.isBlank()) {
+            throw new IllegalArgumentException("ID do documento não pode ser vazio");
+        }
+        // Remove caracteres perigosos, mas mantém caracteres válidos para IDs do CouchDB
+        return docId.replaceAll("[^a-zA-Z0-9_$()+/-]", "");
     }
     
     // ========== Métodos auxiliares para construção de URIs ==========

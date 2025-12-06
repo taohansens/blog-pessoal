@@ -10,6 +10,22 @@ spring:
   jackson:
     default-property-inclusion: non_null
     # Configurações de serialização/deserialização são feitas no JacksonConfig
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: ${GITHUB_CLIENT_ID:cliend-id}
+            client-secret: ${GITHUB_CLIENT_SECRET:secret}
+            scope:
+              - user:email
+              - read:user
+        provider:
+          github:
+            authorization-uri: https://github.com/login/oauth/authorize
+            token-uri: https://github.com/login/oauth/access_token
+            user-info-uri: https://api.github.com/user
+            user-name-attribute: login
 
 couchdb:
   uri: ${COUCHDB_URI:http://localhost:5984}
@@ -21,7 +37,13 @@ couchdb:
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:localhost}
 
+# Configuração do administrador
+app:
+  admin:
+    email: ${ADMIN_EMAIL:USER_ADMIN_HERE}
+
 logging:
   level:
     br.com.taohansen.blog: DEBUG
     org.springframework.web.reactive: DEBUG
+    org.springframework.security: DEBUG

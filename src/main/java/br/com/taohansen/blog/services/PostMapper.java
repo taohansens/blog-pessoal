@@ -20,6 +20,7 @@ import java.util.Map;
 public class PostMapper {
 
     private static final String FIELD_ID = "id";
+    private static final String FIELD_REV = "_rev";
     private static final String FIELD_TITLE = "title";
     private static final String FIELD_SLUG = "slug";
     private static final String FIELD_SUMMARY = "summary";
@@ -74,6 +75,7 @@ public class PostMapper {
     private void mapCommonFields(Map<String, Object> doc, Object target) {
         if (target instanceof Post post) {
             post.setId(getStringSafely(doc, FIELD_ID));
+            post.setRevision(getStringSafely(doc, FIELD_REV));
             post.setTitle(getStringSafely(doc, FIELD_TITLE));
             post.setSlug(getStringSafely(doc, FIELD_SLUG));
             post.setSummary(getStringSafely(doc, FIELD_SUMMARY));

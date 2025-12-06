@@ -4,15 +4,19 @@ server:
 spring:
   web:
     resources:
+      # Desativa completamente recursos estáticos - API puramente REST
+      add-mappings: false
       static-locations: classpath:/none/
   jackson:
     default-property-inclusion: non_null
+    # Configurações de serialização/deserialização são feitas no JacksonConfig
 
 couchdb:
   uri: ${COUCHDB_URI:http://localhost:5984}
   username: ${COUCHDB_USER:admin}
   password: ${COUCHDB_PASSWORD:admin}
   database: ${COUCHDB_DB_NAME:blog}
+  timeout: ${COUCHDB_TIMEOUT:30}
 
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:localhost}

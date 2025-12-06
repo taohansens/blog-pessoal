@@ -109,9 +109,11 @@ public class CouchDbService {
                 }))
                 .doOnNext(post -> log.info("Post carregado: {}", post.getTitle()))
                 .onErrorResume(WebClientResponseException.class, ex -> {
-                    if (ex.getStatusCode().value() == 404) {
-                        // View não existe, usar fallback
-                        log.debug("View por slug não encontrada, usando busca completa");
+                    int statusCode = ex.getStatusCode().value();
+                    // 404 = view não existe, 400 = view não existe ou query inválida
+                    if (statusCode == 404 || statusCode == 400) {
+                        // View não existe ou query inválida, usar fallback
+                        log.debug("View por slug não disponível (status: {}), usando busca completa", statusCode);
                         return searchPostBySlugInAllPosts(sanitizedSlug);
                     }
                     log.error("Erro ao buscar post do CouchDB. Status: {}, Slug: {}", 
@@ -178,13 +180,13 @@ public class CouchDbService {
                             .toList();
 
                     long totalRows = response.getTotalRows();
-                    PagedPostsResponse paged = new PagedPostsResponse();
-                    paged.setPosts(metadataList);
-                    paged.setPage(page);
-                    paged.setSize(size);
-                    paged.setTotal(totalRows);
-                    paged.setHasNext((long) (page + 1) * size < totalRows);
-                    return paged;
+                    return PagedPostsResponse.builder()
+                            .posts(metadataList)
+                            .page(page)
+                            .size(size)
+                            .total(totalRows)
+                            .hasNext((long) (page + 1) * size < totalRows)
+                            .build();
                 })
                 .onErrorResume(WebClientResponseException.class, ex -> {
                     log.error("Erro ao buscar posts paginados do CouchDB. Status: {}, Página: {}, Tamanho: {}", 
@@ -232,8 +234,11 @@ public class CouchDbService {
                             });
                 })
                 .onErrorResume(WebClientResponseException.class, ex -> {
-                    if (ex.getStatusCode().value() == 404) {
-                        // View não existe, usar fallback
+                    int statusCode = ex.getStatusCode().value();
+                    // 404 = view não existe, 400 = view não existe ou query inválida
+                    if (statusCode == 404 || statusCode == 400) {
+                        // View não existe ou query inválida, usar fallback
+                        log.debug("View por slug não disponível (status: {}), usando fallback", statusCode);
                         return checkSlugExistsFallback(sanitizedSlug, excludePostId);
                     }
                     log.debug("Erro ao verificar slug, assumindo que não existe: {}", ex.getMessage());

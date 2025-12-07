@@ -46,11 +46,13 @@ public class CouchDbService {
     /**
      * Lista todos os posts ordenados por data (mais recentes primeiro).
      * A ordenação é feita pela view do CouchDB (descending), otimizando performance.
+     * 
+     * @param includeDrafts Se true, inclui posts em rascunho (apenas para admins)
      * @return Flux de posts
      */
-    public Flux<Post> listPosts() {
-        String uri = buildViewUri(VIEW_BY_DATE, PARAM_INCLUDE_DOCS);
-        
+    public Flux<Post> listPosts(boolean includeDrafts) {
+        String uri = buildViewUri(VIEW_BY_DATE, PARAM_INCLUDE_DOCS, "descending=true");
+
         return couchDbWebClient.get()
                 .uri(uri)
                 .retrieve()
@@ -61,7 +63,15 @@ public class CouchDbService {
                     return Flux.fromIterable(response.getRows())
                             .filter(row -> row.getDoc() != null)
                             .map(postMapper::mapToPost)
-                            .filter(post -> post != null);
+                            .filter(post -> post != null)
+                            .filter(post -> {
+                                // Filtrar rascunhos se não for admin
+                                if (!includeDrafts && Boolean.TRUE.equals(post.getDraft())) {
+                                    log.debug("Post em rascunho filtrado: {}", post.getTitle());
+                                    return false;
+                                }
+                                return true;
+                            });
                 })
                 .doOnNext(post -> log.debug("Post mapeado: {}", post.getTitle()))
                 .onErrorResume(WebClientResponseException.class, ex -> {
@@ -75,9 +85,10 @@ public class CouchDbService {
      * Busca um post pelo slug.
      * Tenta usar uma view específica por slug se disponível, caso contrário busca em todos os posts.
      * @param slug O slug do post (validado e sanitizado)
+     * @param includeDrafts Se true, inclui posts em rascunho (apenas para admins)
      * @return Mono com o post encontrado ou vazio se não encontrado
      */
-    public Mono<Post> getPostBySlug(String slug) {
+    public Mono<Post> getPostBySlug(String slug, boolean includeDrafts) {
         // Validação de entrada
         if (slug == null || slug.isBlank()) {
             log.warn("Tentativa de buscar post com slug vazio ou nulo");
@@ -101,12 +112,19 @@ public class CouchDbService {
                 .flatMapMany(response -> Flux.fromIterable(response.getRows())
                         .filter(row -> row.getDoc() != null)
                         .map(postMapper::mapToPost)
-                        .filter(post -> post != null && sanitizedSlug.equals(post.getSlug())))
+                        .filter(post -> post != null && sanitizedSlug.equals(post.getSlug()))
+                        .filter(post -> {
+                            // Filtrar rascunhos se não for admin
+                            if (!includeDrafts && Boolean.TRUE.equals(post.getDraft())) {
+                                return false;
+                            }
+                            return true;
+                        }))
                 .next()
                 .switchIfEmpty(Mono.defer(() -> {
                     // Fallback: buscar em todos os posts se view por slug não existir
                     log.debug("View por slug não retornou resultados, tentando busca completa para slug: {}", sanitizedSlug);
-                    return searchPostBySlugInAllPosts(sanitizedSlug);
+                    return searchPostBySlugInAllPosts(sanitizedSlug, includeDrafts);
                 }))
                 .doOnNext(post -> log.info("Post carregado: {}", post.getTitle()))
                 .onErrorResume(WebClientResponseException.class, ex -> {
@@ -115,7 +133,7 @@ public class CouchDbService {
                     if (statusCode == 404 || statusCode == 400) {
                         // View não existe ou query inválida, usar fallback
                         log.debug("View por slug não disponível (status: {}), usando busca completa", statusCode);
-                        return searchPostBySlugInAllPosts(sanitizedSlug);
+                        return searchPostBySlugInAllPosts(sanitizedSlug, includeDrafts);
                     }
                     log.error("Erro ao buscar post do CouchDB. Status: {}, Slug: {}", 
                             ex.getStatusCode(), sanitizedSlug);
@@ -126,10 +144,11 @@ public class CouchDbService {
     /**
      * Busca um post pelo slug em todos os posts (fallback quando view específica não existe).
      * @param slug O slug sanitizado
+     * @param includeDrafts Se true, inclui posts em rascunho (apenas para admins)
      * @return Mono com o post encontrado ou vazio
      */
-    private Mono<Post> searchPostBySlugInAllPosts(String slug) {
-        String uri = buildViewUri(VIEW_BY_DATE, PARAM_INCLUDE_DOCS);
+    private Mono<Post> searchPostBySlugInAllPosts(String slug, boolean includeDrafts) {
+        String uri = buildViewUri(VIEW_BY_DATE, PARAM_INCLUDE_DOCS, "descending=true");
         
         return couchDbWebClient.get()
                 .uri(uri)
@@ -138,7 +157,14 @@ public class CouchDbService {
                 .flatMapMany(response -> Flux.fromIterable(response.getRows())
                         .filter(row -> row.getDoc() != null)
                         .map(postMapper::mapToPost)
-                        .filter(post -> post != null && slug.equals(post.getSlug())))
+                        .filter(post -> post != null && slug.equals(post.getSlug()))
+                        .filter(post -> {
+                            // Filtrar rascunhos se não for admin
+                            if (!includeDrafts && Boolean.TRUE.equals(post.getDraft())) {
+                                return false;
+                            }
+                            return true;
+                        }))
                 .next()
                 .switchIfEmpty(Mono.defer(() -> {
                     log.debug("Post não encontrado com slug: {}", slug);
@@ -151,9 +177,10 @@ public class CouchDbService {
      * Lista posts paginados.
      * @param page Número da página (0-indexed, validado)
      * @param size Tamanho da página (validado entre MIN_PAGE_SIZE e MAX_PAGE_SIZE)
+     * @param includeDrafts Se true, inclui posts em rascunho (apenas para admins)
      * @return Mono com resposta paginada
      */
-    public Mono<PagedPostsResponse> listPostsPaged(int page, int size) {
+    public Mono<PagedPostsResponse> listPostsPaged(int page, int size, boolean includeDrafts) {
         // Validação de entrada
         if (page < MIN_PAGE) {
             log.warn("Página inválida: {}", page);
@@ -167,26 +194,63 @@ public class CouchDbService {
         }
         
         int skip = page * size;
-        String uri = buildViewUriWithPagination(VIEW_BY_DATE, skip, size, PARAM_INCLUDE_DOCS);
+        String uri = buildViewUriWithPagination(VIEW_BY_DATE, skip, size, PARAM_INCLUDE_DOCS, "descending=true");
 
         return couchDbWebClient.get()
                 .uri(uri)
                 .retrieve()
                 .bodyToMono(PostsViewResponse.class)
                 .map(response -> {
-                    List<PostMetadata> metadataList = response.getRows().stream()
+                    // Mapear todos os posts primeiro
+                    List<PostMetadata> allMetadata = response.getRows().stream()
                             .filter(row -> row.getDoc() != null)
                             .map(postMapper::mapToMetadata)
                             .filter(meta -> meta != null)
                             .toList();
+                    
+                    // Filtrar rascunhos se necessário
+                    List<PostMetadata> metadataList = allMetadata.stream()
+                            .filter(meta -> {
+                                // Filtrar rascunhos se não for admin
+                                if (!includeDrafts && Boolean.TRUE.equals(meta.getDraft())) {
+                                    return false;
+                                }
+                                return true;
+                            })
+                            .toList();
 
-                    long totalRows = response.getTotalRows();
+                    // Calcular total considerando filtro de rascunhos
+                    long totalRows;
+                    if (includeDrafts) {
+                        // Admin: total inclui rascunhos
+                        totalRows = response.getTotalRows();
+                    } else {
+                        // Não-admin: precisa contar apenas posts publicados
+                        // Nota: O CouchDB retorna o total de todos os documentos na view.
+                        // Como filtramos rascunhos no código, precisamos fazer uma aproximação.
+                        // Para uma contagem precisa, seria necessário uma view separada ou
+                        // uma query adicional, mas para paginação isso é aceitável.
+                        long publishedInPage = allMetadata.stream()
+                                .filter(meta -> !Boolean.TRUE.equals(meta.getDraft()))
+                                .count();
+                        
+                        // Se a página está cheia e não é a última, estimar que há mais
+                        if (publishedInPage == size) {
+                            // Página cheia, provavelmente há mais posts publicados
+                            // Usar o total do CouchDB como limite superior
+                            totalRows = Math.max(publishedInPage, response.getTotalRows());
+                        } else {
+                            // Página não está cheia, então este é provavelmente o total
+                            totalRows = publishedInPage;
+                        }
+                    }
+                    
                     return PagedPostsResponse.builder()
                             .posts(metadataList)
                             .page(page)
                             .size(size)
                             .total(totalRows)
-                            .hasNext((long) (page + 1) * size < totalRows)
+                            .hasNext((long) (page + 1) * size < totalRows || metadataList.size() == size)
                             .build();
                 })
                 .onErrorResume(WebClientResponseException.class, ex -> {
@@ -257,7 +321,8 @@ public class CouchDbService {
      * @return Mono<Boolean> true se existe, false caso contrário
      */
     private Mono<Boolean> checkSlugExistsFallback(String slug, String excludePostId) {
-        return getPostBySlug(slug)
+        // Para verificação de slug, sempre incluir rascunhos (não filtrar)
+        return getPostBySlug(slug, true)
                 .map(post -> {
                     // Se estamos editando um post, ignorar se o slug pertence ao mesmo post
                     return excludePostId == null || !excludePostId.equals(post.getId());

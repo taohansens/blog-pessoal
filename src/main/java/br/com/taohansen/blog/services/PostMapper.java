@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +29,9 @@ public class PostMapper {
     private static final String FIELD_SUMMARY = "summary";
     private static final String FIELD_TAGS = "tags";
     private static final String FIELD_DATE = "date";
+    private static final String FIELD_UPDATED_AT = "updatedAt";
     private static final String FIELD_CONTENT = "content";
+    private static final String FIELD_DRAFT = "draft";
 
     /**
      * Mapeia uma linha da resposta do CouchDB para um objeto Post completo.
@@ -88,14 +91,18 @@ public class PostMapper {
             post.setSlug(getStringSafely(doc, FIELD_SLUG));
             post.setSummary(getStringSafely(doc, FIELD_SUMMARY));
             post.setTags(getListSafely(doc, FIELD_TAGS));
-            post.setDate(parseDateSafely(doc, FIELD_DATE));
+            post.setDate(parseDateTimeSafely(doc, FIELD_DATE));
+            post.setUpdatedAt(parseDateTimeSafely(doc, FIELD_UPDATED_AT));
+            post.setDraft(getBooleanSafely(doc, FIELD_DRAFT));
         } else if (target instanceof PostMetadata meta) {
             meta.setId(id);
             meta.setTitle(getStringSafely(doc, FIELD_TITLE));
             meta.setSlug(getStringSafely(doc, FIELD_SLUG));
             meta.setSummary(getStringSafely(doc, FIELD_SUMMARY));
             meta.setTags(getListSafely(doc, FIELD_TAGS));
-            meta.setDate(parseDateSafely(doc, FIELD_DATE));
+            meta.setDate(parseDateTimeSafely(doc, FIELD_DATE));
+            meta.setUpdatedAt(parseDateTimeSafely(doc, FIELD_UPDATED_AT));
+            meta.setDraft(getBooleanSafely(doc, FIELD_DRAFT));
         }
     }
 
@@ -151,23 +158,51 @@ public class PostMapper {
     }
 
     /**
-     * Faz o parse de uma data de forma segura.
+     * Faz o parse de uma data/hora de forma segura.
+     * Suporta tanto LocalDateTime quanto LocalDate (para compatibilidade).
      * @param doc O documento
      * @param key A chave
-     * @return A data ou null se não existir ou não puder ser parseada
+     * @return A data/hora ou null se não existir ou não puder ser parseada
      */
-    private LocalDate parseDateSafely(Map<String, Object> doc, String key) {
+    private LocalDateTime parseDateTimeSafely(Map<String, Object> doc, String key) {
         String dateStr = getStringSafely(doc, key);
         if (dateStr == null || dateStr.isBlank()) {
             return null;
         }
         
         try {
-            return LocalDate.parse(dateStr);
+            // Tentar parse como LocalDateTime primeiro (formato ISO com hora)
+            if (dateStr.contains("T")) {
+                return LocalDateTime.parse(dateStr);
+            }
+            // Se não tiver hora, tentar como LocalDate e converter para LocalDateTime
+            LocalDate date = LocalDate.parse(dateStr);
+            return date.atStartOfDay();
         } catch (DateTimeParseException e) {
-            log.warn("Erro ao fazer parse da data '{}' do campo '{}': {}", dateStr, key, e.getMessage());
+            log.warn("Erro ao fazer parse da data/hora '{}' do campo '{}': {}", dateStr, key, e.getMessage());
             return null;
         }
+    }
+    
+    /**
+     * Obtém um boolean de forma segura do mapa.
+     * @param doc O documento
+     * @param key A chave
+     * @return O boolean ou false se não existir ou não for boolean
+     */
+    private Boolean getBooleanSafely(Map<String, Object> doc, String key) {
+        Object value = doc.get(key);
+        if (value == null) {
+            return false; // Default: não é rascunho
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof String str) {
+            return Boolean.parseBoolean(str);
+        }
+        log.warn("Campo '{}' não é um boolean, valor: {}", key, value);
+        return false;
     }
     
     /**
@@ -214,9 +249,11 @@ public class PostMapper {
         doc.put("title", post.getTitle());
         doc.put("slug", post.getSlug());
         doc.put("date", post.getDate() != null ? post.getDate().toString() : null);
+        doc.put("updatedAt", post.getUpdatedAt() != null ? post.getUpdatedAt().toString() : null);
         doc.put("tags", post.getTags() != null ? post.getTags() : new ArrayList<>());
         doc.put("summary", post.getSummary());
         doc.put("content", post.getContent());
+        doc.put("draft", post.getDraft() != null ? post.getDraft() : false);
         
         return doc;
     }

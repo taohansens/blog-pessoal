@@ -8,7 +8,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,10 +37,17 @@ public class CreatePostRequest {
     private String slug;
     
     /**
-     * Data de publicação do post.
-     * Se não fornecido, será usada a data atual.
+     * Data e hora de publicação do post.
+     * Se não fornecido, será usada a data/hora atual.
      */
-    private LocalDate date;
+    private LocalDateTime date;
+    
+    /**
+     * Indica se o post é um rascunho.
+     * Rascunhos só são visíveis para administradores.
+     */
+    @Builder.Default
+    private Boolean draft = false;
     
     /**
      * Lista de tags do post.

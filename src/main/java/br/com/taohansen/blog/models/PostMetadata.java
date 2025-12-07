@@ -9,7 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,10 +48,21 @@ public class PostMetadata {
     private String title;
     
     /**
-     * Data de publicação.
+     * Data e hora de publicação.
      */
     @NotNull(message = "Data não pode ser nula")
-    private LocalDate date;
+    private LocalDateTime date;
+    
+    /**
+     * Data e hora da última atualização do post.
+     * Null se o post nunca foi atualizado.
+     */
+    private LocalDateTime updatedAt;
+    
+    /**
+     * Indica se o post é um rascunho.
+     */
+    private Boolean draft;
     
     /**
      * Lista de tags.

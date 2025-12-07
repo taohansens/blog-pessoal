@@ -3,6 +3,8 @@ package br.com.taohansen.blog.controllers;
 import br.com.taohansen.blog.models.CreatePostRequest;
 import br.com.taohansen.blog.models.PagedPostsResponse;
 import br.com.taohansen.blog.models.Post;
+import br.com.taohansen.blog.security.AdminService;
+import br.com.taohansen.blog.security.JwtService;
 import br.com.taohansen.blog.services.CouchDbService;
 import br.com.taohansen.blog.services.SlugService;
 import jakarta.validation.constraints.Max;
@@ -11,13 +13,21 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.ReactiveSecurityContextHolder;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -48,6 +58,9 @@ public class PostsController {
 
     private final CouchDbService couchDbService;
     private final SlugService slugService;
+    private final AdminService adminService;
+    private final JwtService jwtService;
+    private static final String BEARER_PREFIX = "Bearer ";
 
     /**
      * Lista todos os posts ordenados por data (mais recentes primeiro).
@@ -55,15 +68,16 @@ public class PostsController {
      * @return Lista completa de posts
      */
     @GetMapping("/all")
-    public Mono<ResponseEntity<List<Post>>> listPosts() {
+    public Mono<ResponseEntity<List<Post>>> listPosts(ServerWebExchange exchange) {
         log.debug("Listando todos os posts");
         
-        return couchDbService.listPosts()
-                .collectList()
-                .map(posts -> {
-                    log.info("Retornando {} posts", posts.size());
-                    return ResponseEntity.ok(posts);
-                })
+        return isAdminUser(exchange)
+                .flatMap(includeDrafts -> couchDbService.listPosts(includeDrafts)
+                        .collectList()
+                        .map(posts -> {
+                            log.info("Retornando {} posts (incluindo rascunhos: {})", posts.size(), includeDrafts);
+                            return ResponseEntity.ok(posts);
+                        }))
                 .onErrorResume(ex -> {
                     log.error("Erro ao listar posts", ex);
                     return Mono.just(ResponseEntity
@@ -83,16 +97,18 @@ public class PostsController {
             @PathVariable 
             @NotBlank(message = "Slug não pode ser vazio")
             @Pattern(regexp = SLUG_PATTERN, message = "Slug inválido")
-            String slug) {
+            String slug,
+            ServerWebExchange exchange) {
         
         log.debug("Buscando post com slug: {}", slug);
         
-        return couchDbService.getPostBySlug(slug)
-                .map(post -> {
-                    log.info("Post encontrado: {}", post.getTitle());
-                    return ResponseEntity.ok(post);
-                })
-                .defaultIfEmpty(ResponseEntity.notFound().build())
+        return isAdminUser(exchange)
+                .flatMap(includeDrafts -> couchDbService.getPostBySlug(slug, includeDrafts)
+                        .map(post -> {
+                            log.info("Post encontrado: {}", post.getTitle());
+                            return ResponseEntity.ok(post);
+                        })
+                        .defaultIfEmpty(ResponseEntity.notFound().build()))
                 .onErrorResume(ex -> {
                     log.error("Erro ao buscar post com slug: {}", slug, ex);
                     return Mono.just(ResponseEntity
@@ -117,16 +133,18 @@ public class PostsController {
             @RequestParam(defaultValue = "10") 
             @Min(value = MIN_PAGE_SIZE, message = "Tamanho da página deve ser >= 1")
             @Max(value = MAX_PAGE_SIZE, message = "Tamanho da página deve ser <= 50")
-            int size) {
+            int size,
+            ServerWebExchange exchange) {
 
         log.debug("Listando posts paginados - página: {}, tamanho: {}", page, size);
 
-        return couchDbService.listPostsPaged(page, size)
-                .map(paged -> {
-                    log.info("Retornando página {} com {} posts (total: {})", 
-                            page, paged.getPosts().size(), paged.getTotal());
-                    return ResponseEntity.ok(paged);
-                })
+        return isAdminUser(exchange)
+                .flatMap(includeDrafts -> couchDbService.listPostsPaged(page, size, includeDrafts)
+                        .map(paged -> {
+                            log.info("Retornando página {} com {} posts (total: {}, incluindo rascunhos: {})", 
+                                    page, paged.getPosts().size(), paged.getTotal(), includeDrafts);
+                            return ResponseEntity.ok(paged);
+                        }))
                 .defaultIfEmpty(ResponseEntity.notFound().build())
                 .onErrorResume(ex -> {
                     log.error("Erro ao listar posts paginados - página: {}, tamanho: {}", 
@@ -180,10 +198,11 @@ public class PostsController {
                             .type("blog_post")
                             .title(request.getTitle())
                             .slug(slug)
-                            .date(request.getDate() != null ? request.getDate() : LocalDate.now())
+                            .date(request.getDate() != null ? request.getDate() : LocalDateTime.now())
                             .tags(request.getTags() != null ? request.getTags() : new java.util.ArrayList<>())
                             .summary(request.getSummary())
                             .content(request.getContent())
+                            .draft(request.getDraft() != null ? request.getDraft() : false)
                             .build();
                     
                     return couchDbService.createPost(post);
@@ -263,6 +282,11 @@ public class PostsController {
                         existingPost.setTags(request.getTags() != null ? request.getTags() : new java.util.ArrayList<>());
                         existingPost.setSummary(request.getSummary());
                         existingPost.setContent(request.getContent());
+                        if (request.getDraft() != null) {
+                            existingPost.setDraft(request.getDraft());
+                        }
+                        // Definir data de atualização
+                        existingPost.setUpdatedAt(LocalDateTime.now());
                         
                         return couchDbService.updatePost(existingPost);
                     });
@@ -326,5 +350,62 @@ public class PostsController {
                             .status(HttpStatus.INTERNAL_SERVER_ERROR)
                             .build());
                 });
+    }
+    
+    /**
+     * Verifica se o usuário atual é administrador.
+     * @param exchange ServerWebExchange para acessar headers e contexto de segurança
+     * @return Mono<Boolean> true se for admin, false caso contrário
+     */
+    private Mono<Boolean> isAdminUser(ServerWebExchange exchange) {
+        return ReactiveSecurityContextHolder.getContext()
+                .map(SecurityContext::getAuthentication)
+                .flatMap(authentication -> {
+                    if (authentication == null || !authentication.isAuthenticated()) {
+                        return Mono.just(false);
+                    }
+                    
+                    boolean isAdmin = false;
+                    String userIdentifier = null;
+                    
+                    if (authentication instanceof OAuth2AuthenticationToken oauth2Token) {
+                        // Autenticação OAuth2 (sessão)
+                        OAuth2User oauth2User = oauth2Token.getPrincipal();
+                        if (oauth2User != null) {
+                            userIdentifier = getEmailFromOAuth2User(oauth2User);
+                            isAdmin = adminService.isAdmin(userIdentifier);
+                        }
+                    } else if (authentication instanceof UsernamePasswordAuthenticationToken) {
+                        // Autenticação JWT
+                        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+                        if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
+                            String token = authHeader.substring(BEARER_PREFIX.length());
+                            if (jwtService.validateToken(token)) {
+                                userIdentifier = jwtService.extractEmail(token);
+                                if (userIdentifier == null) {
+                                    userIdentifier = jwtService.extractLogin(token);
+                                }
+                                isAdmin = Boolean.TRUE.equals(jwtService.extractIsAdmin(token));
+                            }
+                        }
+                    }
+                    
+                    log.debug("Verificação de admin - usuário: {}, é admin: {}", userIdentifier, isAdmin);
+                    return Mono.just(isAdmin);
+                })
+                .defaultIfEmpty(false);
+    }
+    
+    /**
+     * Extrai o email do OAuth2User.
+     * @param oauth2User OAuth2User
+     * @return Email do usuário ou null
+     */
+    private String getEmailFromOAuth2User(OAuth2User oauth2User) {
+        String email = oauth2User.getAttribute("email");
+        if (email == null || email.isBlank()) {
+            email = oauth2User.getAttribute("login"); // Fallback para login do GitHub
+        }
+        return email;
     }
 }

@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
@@ -26,6 +28,8 @@ import java.util.Map;
 public class AdminAuthorizationFilter implements WebFilter {
 
     private final AdminService adminService;
+    private final JwtService jwtService;
+    private static final String BEARER_PREFIX = "Bearer ";
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
@@ -48,26 +52,40 @@ public class AdminAuthorizationFilter implements WebFilter {
                             return exchange.getResponse().setComplete();
                         }
 
+                        boolean isAdmin = false;
+                        String userIdentifier = null;
+
                         if (authentication instanceof OAuth2AuthenticationToken oauth2Token) {
+                            // Autenticação OAuth2 (sessão)
                             OAuth2User oauth2User = oauth2Token.getPrincipal();
-                            String email = null;
                             if (oauth2User != null) {
-                                email = getEmailFromOAuth2User(oauth2User);
+                                userIdentifier = getEmailFromOAuth2User(oauth2User);
+                                isAdmin = adminService.isAdmin(userIdentifier);
                             }
-
-                            if (!adminService.isAdmin(email)) {
-                                log.warn("Tentativa de acesso não autorizado: {} {} por usuário: {}", 
-                                        method, path, email);
-                                exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
-                                return exchange.getResponse().setComplete();
+                        } else if (authentication instanceof UsernamePasswordAuthenticationToken) {
+                            // Autenticação JWT
+                            String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+                            if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
+                                String token = authHeader.substring(BEARER_PREFIX.length());
+                                if (jwtService.validateToken(token)) {
+                                    userIdentifier = jwtService.extractEmail(token);
+                                    if (userIdentifier == null) {
+                                        userIdentifier = jwtService.extractLogin(token);
+                                    }
+                                    isAdmin = Boolean.TRUE.equals(jwtService.extractIsAdmin(token));
+                                }
                             }
+                        }
 
-                            log.debug("Acesso autorizado para administrador: {} {}", method, path);
-                        } else {
-                            log.warn("Autenticação não é OAuth2: {}", authentication.getClass());
+                        if (!isAdmin) {
+                            log.warn("Tentativa de acesso não autorizado: {} {} por usuário: {}", 
+                                    method, path, userIdentifier);
                             exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
                             return exchange.getResponse().setComplete();
                         }
+
+                        log.debug("Acesso autorizado para administrador: {} {} (usuário: {})", 
+                                method, path, userIdentifier);
 
                         return chain.filter(exchange);
                     })

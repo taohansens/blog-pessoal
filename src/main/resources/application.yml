@@ -41,6 +41,12 @@ cors:
 app:
   admin:
     email: ${ADMIN_EMAIL:USER_ADMIN_HERE}
+  jwt:
+    secret: ${JWT_SECRET:mySecretKeyForJWTTokenGenerationThatShouldBeAtLeast256BitsLongForSecurity}
+    expiration: ${JWT_EXPIRATION:86400000} # 24 horas em milissegundos
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:3000}
+    auth-callback-path: ${FRONTEND_AUTH_CALLBACK_PATH:/auth/callback}
 
 logging:
   level:

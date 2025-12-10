@@ -203,6 +203,7 @@ public class PostsController {
                             .summary(request.getSummary())
                             .content(request.getContent())
                             .draft(request.getDraft() != null ? request.getDraft() : false)
+                            .image(request.getImage())
                             .build();
                     
                     return couchDbService.createPost(post);
@@ -285,6 +286,7 @@ public class PostsController {
                         if (request.getDraft() != null) {
                             existingPost.setDraft(request.getDraft());
                         }
+                        existingPost.setImage(request.getImage());
                         // Definir data de atualização
                         existingPost.setUpdatedAt(LocalDateTime.now());
                         

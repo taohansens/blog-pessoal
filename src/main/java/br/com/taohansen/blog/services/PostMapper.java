@@ -1,6 +1,7 @@
 package br.com.taohansen.blog.services;
 
 import br.com.taohansen.blog.models.Post;
+import br.com.taohansen.blog.models.PostImage;
 import br.com.taohansen.blog.models.PostMetadata;
 import br.com.taohansen.blog.models.PostsViewResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,9 @@ public class PostMapper {
     private static final String FIELD_UPDATED_AT = "updatedAt";
     private static final String FIELD_CONTENT = "content";
     private static final String FIELD_DRAFT = "draft";
+    private static final String FIELD_IMAGE = "image";
+    private static final String FIELD_IMAGE_URL = "url";
+    private static final String FIELD_IMAGE_ATTRIBUTION = "attribution";
 
     /**
      * Mapeia uma linha da resposta do CouchDB para um objeto Post completo.
@@ -94,6 +98,7 @@ public class PostMapper {
             post.setDate(parseDateTimeSafely(doc, FIELD_DATE));
             post.setUpdatedAt(parseDateTimeSafely(doc, FIELD_UPDATED_AT));
             post.setDraft(getBooleanSafely(doc, FIELD_DRAFT));
+            post.setImage(getImageSafely(doc));
         } else if (target instanceof PostMetadata meta) {
             meta.setId(id);
             meta.setTitle(getStringSafely(doc, FIELD_TITLE));
@@ -103,6 +108,7 @@ public class PostMapper {
             meta.setDate(parseDateTimeSafely(doc, FIELD_DATE));
             meta.setUpdatedAt(parseDateTimeSafely(doc, FIELD_UPDATED_AT));
             meta.setDraft(getBooleanSafely(doc, FIELD_DRAFT));
+            meta.setImage(getImageSafely(doc));
         }
     }
 
@@ -254,8 +260,61 @@ public class PostMapper {
         doc.put("summary", post.getSummary());
         doc.put("content", post.getContent());
         doc.put("draft", post.getDraft() != null ? post.getDraft() : false);
+        doc.put("image", toImageMap(post.getImage()));
         
         return doc;
+    }
+
+    /**
+     * Obtém a estrutura de imagem de forma segura do documento.
+     * @param doc O documento do CouchDB
+     * @return PostImage ou null se ausente ou inválida
+     */
+    @SuppressWarnings("unchecked")
+    private PostImage getImageSafely(Map<String, Object> doc) {
+        Object value = doc.get(FIELD_IMAGE);
+        if (value == null) {
+            return null;
+        }
+        if (!(value instanceof Map<?, ?> map)) {
+            log.warn("Campo '{}' não é um objeto, tipo: {}", FIELD_IMAGE, value.getClass().getSimpleName());
+            return null;
+        }
+
+        Object urlObj = map.get(FIELD_IMAGE_URL);
+        Object attributionObj = map.get(FIELD_IMAGE_ATTRIBUTION);
+
+        String url = (urlObj instanceof String urlStr && !urlStr.isBlank()) ? urlStr : null;
+        if (url == null) {
+            if (urlObj != null) {
+                log.warn("Campo '{}' não possui url válida", FIELD_IMAGE);
+            }
+            return null;
+        }
+
+        PostImage image = new PostImage();
+        image.setUrl(url);
+        if (attributionObj instanceof String att && !att.isBlank()) {
+            image.setAttribution(att);
+        } else if (attributionObj != null) {
+            log.warn("Campo '{}' possui attribution inválido, tipo: {}", FIELD_IMAGE, attributionObj.getClass().getSimpleName());
+        }
+        return image;
+    }
+
+    /**
+     * Converte PostImage em mapa para persistência.
+     * @param image objeto de imagem
+     * @return mapa com url e attribution ou null se imagem for null
+     */
+    private Map<String, Object> toImageMap(PostImage image) {
+        if (image == null) {
+            return null;
+        }
+        Map<String, Object> imageMap = new java.util.HashMap<>();
+        imageMap.put(FIELD_IMAGE_URL, image.getUrl());
+        imageMap.put(FIELD_IMAGE_ATTRIBUTION, image.getAttribution());
+        return imageMap;
     }
 }
 

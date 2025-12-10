@@ -1,5 +1,6 @@
 package br.com.taohansen.blog.models;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -54,6 +55,12 @@ public class CreatePostRequest {
      */
     @Builder.Default
     private List<@NotBlank @Size(max = 50) String> tags = new ArrayList<>();
+    
+    /**
+     * Dados da imagem usada no frontend (opcional).
+     */
+    @Valid
+    private PostImage image;
     
     /**
      * Resumo/descrição curta do post.

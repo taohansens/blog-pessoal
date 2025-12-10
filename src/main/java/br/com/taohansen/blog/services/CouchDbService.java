@@ -230,19 +230,32 @@ public class CouchDbService {
                         // Como filtramos rascunhos no código, precisamos fazer uma aproximação.
                         // Para uma contagem precisa, seria necessário uma view separada ou
                         // uma query adicional, mas para paginação isso é aceitável.
-                        long publishedInPage = allMetadata.stream()
-                                .filter(meta -> !Boolean.TRUE.equals(meta.getDraft()))
-                                .count();
+                        long publishedInPage = metadataList.size();
                         
-                        // Se a página está cheia e não é a última, estimar que há mais
+                        // Se a página está cheia, pode haver mais posts publicados
+                        // Se a página não está cheia, este é provavelmente o total
                         if (publishedInPage == size) {
-                            // Página cheia, provavelmente há mais posts publicados
-                            // Usar o total do CouchDB como limite superior
-                            totalRows = Math.max(publishedInPage, response.getTotalRows());
+                            // Página cheia, pode haver mais posts publicados
+                            // Usar o total do CouchDB como limite superior (pode incluir rascunhos)
+                            // Mas sabemos que temos pelo menos (skip + publishedInPage) posts publicados
+                            totalRows = Math.max((long) skip + publishedInPage, response.getTotalRows());
                         } else {
                             // Página não está cheia, então este é provavelmente o total
-                            totalRows = publishedInPage;
+                            totalRows = (long) skip + publishedInPage;
                         }
+                    }
+                    
+                    // Calcular hasNext corretamente
+                    // hasNext = true se há mais itens além dos já retornados
+                    // Se a página atual tem menos itens que o size, é a última página
+                    boolean hasNext;
+                    if (metadataList.size() < size) {
+                        // Página não está cheia, então não há próxima página
+                        hasNext = false;
+                    } else {
+                        // Página está cheia, verificar se há mais itens
+                        // hasNext = (itens já vistos + itens na página atual) < total
+                        hasNext = (long) skip + metadataList.size() < totalRows;
                     }
                     
                     return PagedPostsResponse.builder()
@@ -250,7 +263,7 @@ public class CouchDbService {
                             .page(page)
                             .size(size)
                             .total(totalRows)
-                            .hasNext((long) (page + 1) * size < totalRows || metadataList.size() == size)
+                            .hasNext(hasNext)
                             .build();
                 })
                 .onErrorResume(WebClientResponseException.class, ex -> {

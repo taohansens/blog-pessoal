@@ -14,7 +14,7 @@ import java.util.List;
 
 /**
  * Resposta paginada de posts.
- * 
+ * <p>
  * Usa classe com builder para flexibilidade e imutabilidade parcial.
  * Segue padrões de APIs RESTful modernas.
  */
@@ -23,8 +23,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class PagedPostsResponse {
-    
+public class PagedPost {
+
     /**
      * Lista de metadados dos posts (pode estar vazia, nunca null).
      */
@@ -32,32 +32,33 @@ public class PagedPostsResponse {
     @Valid
     @Builder.Default
     private List<PostMetadata> posts = Collections.emptyList();
-    
+
     /**
      * Número da página atual (0-indexed).
      */
     @Min(value = 0, message = "Página deve ser >= 0")
     private int page;
-    
+
     /**
      * Tamanho da página (número de itens por página).
      */
     @Min(value = 1, message = "Tamanho da página deve ser >= 1")
     private int size;
-    
+
     /**
      * Total de itens disponíveis.
      */
     @Min(value = 0, message = "Total deve ser >= 0")
     private long total;
-    
+
     /**
      * Indica se há próxima página.
      */
     private boolean hasNext;
-    
+
     /**
      * Calcula o número total de páginas.
+     *
      * @return Número total de páginas (0 se não houver itens)
      */
     public int getTotalPages() {
@@ -66,17 +67,19 @@ public class PagedPostsResponse {
         }
         return (int) Math.ceil((double) total / size);
     }
-    
+
     /**
      * Verifica se há página anterior.
+     *
      * @return true se há página anterior
      */
     public boolean hasPrevious() {
         return page > 0;
     }
-    
+
     /**
      * Verifica se a página atual está vazia.
+     *
      * @return true se não há posts na página atual
      */
     public boolean isEmpty() {

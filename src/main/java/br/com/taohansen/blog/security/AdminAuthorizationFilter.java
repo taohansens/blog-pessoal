@@ -41,8 +41,15 @@ public class AdminAuthorizationFilter implements WebFilter {
             return chain.filter(exchange);
         }
 
+        // Ignorar preflight (já permitido em SecurityConfig)
+        if (method == HttpMethod.OPTIONS) {
+            return chain.filter(exchange);
+        }
+
         // Verificar se é uma operação de escrita que requer admin
-        if (isWriteOperation(method) && path.startsWith("/api/posts")) {
+        boolean isPostWrite = isWriteOperation(method) && path.startsWith("/api/posts");
+        boolean isMedia = path.startsWith("/api/admin/media");
+        if (isPostWrite || isMedia) {
             return ReactiveSecurityContextHolder.getContext()
                     .map(SecurityContext::getAuthentication)
                     .flatMap(authentication -> {

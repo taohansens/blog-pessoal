@@ -17,13 +17,6 @@ import org.springframework.security.web.server.context.WebSessionServerSecurityC
 
 /**
  * Configuração de segurança para autenticação OAuth2 com GitHub.
- * Endpoints públicos (GET):
- * - GET /api/posts/** - Leitura de posts
- * Endpoints protegidos (requerem autenticação como administrador):
- * - POST /api/posts - Criar post
- * - PUT /api/posts/{id} - Atualizar post
- * - DELETE /api/posts/{id} - Deletar post
- * A verificação de administrador é feita pelo AdminAuthorizationFilter.
  */
 @Configuration
 @EnableWebFluxSecurity
@@ -41,6 +34,8 @@ public class SecurityConfig {
         http
             .csrf(ServerHttpSecurity.CsrfSpec::disable) // Desabilitar CSRF para API REST
             .authorizeExchange(exchanges -> exchanges
+                // Liberar preflight CORS
+                .pathMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                 // Permitir acesso público a operações de leitura (GET)
                 .pathMatchers("/api/posts/**").permitAll()
                 // Permitir acesso aos endpoints de autenticação (frontend precisa verificar status)

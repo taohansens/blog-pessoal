@@ -3,24 +3,19 @@ package br.com.taohansen.blog.controllers.admin;
 import br.com.taohansen.blog.dto.post.PagedPostResponse;
 import br.com.taohansen.blog.dto.post.PostResponse;
 import br.com.taohansen.blog.models.CreatePostRequest;
-import br.com.taohansen.blog.security.AdminService;
-import br.com.taohansen.blog.security.JwtService;
-import br.com.taohansen.blog.services.PostService;
 import br.com.taohansen.blog.mappers.PostMapper;
+import br.com.taohansen.blog.security.AdminAuthorizationService;
+import br.com.taohansen.blog.services.PostService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ServerWebExchange;
@@ -42,13 +37,17 @@ public class AdminPostsController {
     private static final int MAX_PAGE_SIZE = 50;
     private static final int MIN_PAGE_SIZE = 1;
     private static final String SLUG_PATTERN = "^[a-z0-9]+(?:-[a-z0-9]+)*$";
-    private static final String BEARER_PREFIX = "Bearer ";
 
     private final PostService postService;
     private final PostMapper postMapper;
-    private final AdminService adminService;
-    private final JwtService jwtService;
+    private final AdminAuthorizationService adminAuthorizationService;
 
+    /**
+     * Lista todos os posts (incluindo rascunhos) para uso em área administrativa.
+     *
+     * @param exchange contexto da requisição (usado para extrair informações de autenticação)
+     * @return {@link Mono} com {@link ResponseEntity} contendo a lista de posts ou erro apropriado
+     */
     @GetMapping("/all")
     public Mono<ResponseEntity<List<PostResponse>>> listPosts(ServerWebExchange exchange) {
         log.debug("Listando todos os posts (admin)");
@@ -75,6 +74,13 @@ public class AdminPostsController {
                 });
     }
 
+    /**
+     * Busca um post específico (incluindo rascunhos) a partir do slug.
+     *
+     * @param slug     identificador amigável do post
+     * @param exchange contexto da requisição (usado para validação de admin)
+     * @return {@link Mono} com {@link ResponseEntity} contendo o post ou código HTTP adequado
+     */
     @GetMapping("/{slug}")
     public Mono<ResponseEntity<PostResponse>> getPost(
             @PathVariable
@@ -104,6 +110,14 @@ public class AdminPostsController {
                 });
     }
 
+    /**
+     * Lista posts paginados (incluindo rascunhos) para o painel admin.
+     *
+     * @param page     número da página (0-indexed)
+     * @param size     tamanho da página
+     * @param exchange contexto da requisição (usado para validação de admin)
+     * @return {@link Mono} com {@link ResponseEntity} contendo página de posts ou erro
+     */
     @GetMapping
     public Mono<ResponseEntity<PagedPostResponse>> listPostsPaged(
             @RequestParam(defaultValue = "0")
@@ -138,9 +152,16 @@ public class AdminPostsController {
                 });
     }
 
+    /**
+     * Cria um novo post em contexto administrativo.
+     *
+     * @param request  dados para criação do post
+     * @param exchange contexto da requisição (usado para validação de admin)
+     * @return {@link Mono} com {@link ResponseEntity} contendo o post criado ou erro de validação/servidor
+     */
     @PostMapping
     public Mono<ResponseEntity<PostResponse>> createPost(
-            @RequestBody @org.springframework.validation.annotation.Validated CreatePostRequest request,
+            @RequestBody @Validated CreatePostRequest request,
             ServerWebExchange exchange) {
 
         log.debug("Criando novo post (admin): {}", request.getTitle());
@@ -169,12 +190,20 @@ public class AdminPostsController {
                 });
     }
 
+    /**
+     * Atualiza um post existente em contexto administrativo.
+     *
+     * @param id       identificador do post a ser atualizado
+     * @param request  dados para atualização
+     * @param exchange contexto da requisição (usado para validação de admin)
+     * @return {@link Mono} com {@link ResponseEntity} contendo o post atualizado ou erro
+     */
     @PutMapping("/{id}")
     public Mono<ResponseEntity<PostResponse>> updatePost(
             @PathVariable
             @NotBlank(message = "ID não pode ser vazio")
             String id,
-            @RequestBody @org.springframework.validation.annotation.Validated CreatePostRequest request,
+            @RequestBody @Validated CreatePostRequest request,
             ServerWebExchange exchange) {
 
         log.debug("Atualizando post (admin) com ID: {}", id);
@@ -203,6 +232,13 @@ public class AdminPostsController {
                 });
     }
 
+    /**
+     * Remove um post existente em contexto administrativo.
+     *
+     * @param id       identificador do post a ser deletado
+     * @param exchange contexto da requisição (usado para validação de admin)
+     * @return {@link Mono} com {@link ResponseEntity} vazio com status adequado
+     */
     @DeleteMapping("/{id}")
     public Mono<ResponseEntity<Void>> deletePost(
             @PathVariable
@@ -235,48 +271,23 @@ public class AdminPostsController {
                 });
     }
 
+    /**
+     * Verifica se o usuário autenticado no contexto atual possui permissões de administrador.
+     * Considera tanto autenticação OAuth2 quanto JWT.
+     *
+     * @param exchange contexto da requisição (utilizado para ler o cabeçalho Authorization em caso de JWT)
+     * @return {@link Mono} com {@code true} se o usuário for admin, {@code false} caso contrário
+     */
     private Mono<Boolean> isAdminUser(ServerWebExchange exchange) {
         return ReactiveSecurityContextHolder.getContext()
                 .map(SecurityContext::getAuthentication)
-                .flatMap(authentication -> {
-                    if (authentication == null || !authentication.isAuthenticated()) {
-                        return Mono.just(false);
-                    }
-
-                    boolean isAdmin = false;
-                    String userIdentifier = null;
-
-                    if (authentication instanceof OAuth2AuthenticationToken oauth2Token) {
-                        OAuth2User oauth2User = oauth2Token.getPrincipal();
-                        if (oauth2User != null) {
-                            userIdentifier = getEmailFromOAuth2User(oauth2User);
-                            isAdmin = adminService.isAdmin(userIdentifier);
-                        }
-                    } else if (authentication instanceof UsernamePasswordAuthenticationToken) {
-                        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-                        if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
-                            String token = authHeader.substring(BEARER_PREFIX.length());
-                            if (jwtService.validateToken(token)) {
-                                userIdentifier = jwtService.extractEmail(token);
-                                if (userIdentifier == null) {
-                                    userIdentifier = jwtService.extractLogin(token);
-                                }
-                                isAdmin = Boolean.TRUE.equals(jwtService.extractIsAdmin(token));
-                            }
-                        }
-                    }
-
-                    log.debug("Verificação de admin (posts) - usuário: {}, é admin: {}", userIdentifier, isAdmin);
-                    return Mono.just(isAdmin);
+                .map(authentication -> {
+                    AdminAuthorizationService.AdminAuthResult result =
+                            adminAuthorizationService.evaluate(exchange, authentication);
+                    log.debug("Verificação de admin (posts) - usuário: {}, é admin: {}",
+                            result.userIdentifier(), result.admin());
+                    return result.admin();
                 })
                 .defaultIfEmpty(false);
-    }
-
-    private String getEmailFromOAuth2User(OAuth2User oauth2User) {
-        String email = oauth2User.getAttribute("email");
-        if (email == null || email.isBlank()) {
-            email = oauth2User.getAttribute("login");
-        }
-        return email;
     }
 }

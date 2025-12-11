@@ -4,7 +4,7 @@ import br.com.taohansen.blog.dto.post.PagedPostResponse;
 import br.com.taohansen.blog.dto.post.PostImageResponse;
 import br.com.taohansen.blog.dto.post.PostResponse;
 import br.com.taohansen.blog.dto.post.PostSummaryResponse;
-import br.com.taohansen.blog.models.PagedPostsResponse;
+import br.com.taohansen.blog.models.PagedPost;
 import br.com.taohansen.blog.models.Post;
 import br.com.taohansen.blog.models.PostImage;
 import br.com.taohansen.blog.models.PostMetadata;
@@ -23,7 +23,7 @@ public interface PostMapper {
     List<PostSummaryResponse> toSummaryList(List<PostMetadata> metadata);
 
     @Mapping(target = "posts", source = "posts")
-    PagedPostResponse toPagedResponse(PagedPostsResponse response);
+    PagedPostResponse toPagedResponse(PagedPost response);
 
     PostImageResponse toImage(PostImage image);
 }

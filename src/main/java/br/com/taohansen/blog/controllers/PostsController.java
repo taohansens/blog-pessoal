@@ -17,7 +17,12 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
 /**
- * Controller REST para exibição dos posts do blog.
+ * Controller REST responsável por disponibilizar os endpoints públicos de leitura
+ * de posts do blog.
+ * <p>
+ * Todos os endpoints são reativos (WebFlux), retornando {@link Mono} para
+ * permitir processamento assíncrono e não bloqueante.
+ * </p>
  */
 @RestController
 @RequestMapping("/api/posts")
@@ -36,9 +41,14 @@ public class PostsController {
     /**
      * Lista posts de forma paginada.
      *
-     * @param page Número da página (0-indexed, mínimo 0)
-     * @param size Tamanho da página (entre 1 e 50)
-     * @return Resposta paginada com posts
+     * @param page número da página (zero-based, mínimo {@code 0}); caso não informado,
+     *             assume o valor padrão definido em {@code @RequestParam(defaultValue = "0")}
+     * @param size quantidade de registros por página (entre {@value MIN_PAGE_SIZE} e
+     *             {@value MAX_PAGE_SIZE}); caso não informado, assume o valor padrão
+     *             definido em {@code @RequestParam(defaultValue = "10")}
+     * @return {@link Mono} contendo um {@link ResponseEntity} com {@link PagedPostResponse}
+     * em caso de sucesso, {@code 404 (Not Found)} quando não houver registros para o
+     * critério informado ou {@code 500 (Internal Server Error)} em caso de erro interno
      */
     @GetMapping
     public Mono<ResponseEntity<PagedPostResponse>> getAllPaged(
@@ -55,23 +65,22 @@ public class PostsController {
 
         return postService.listPostsPaged(page, size, false)
                 .map(postMapper::toPagedResponse)
-                .flatMap(Mono::justOrEmpty)
                 .map(ResponseEntity::ok)
-                .defaultIfEmpty(ResponseEntity.notFound().build())
+                .switchIfEmpty(Mono.just(ResponseEntity.notFound().build()))
                 .onErrorResume(ex -> {
-                    log.error("Erro ao listar posts paginados - página: {}, tamanho: {}",
-                            page, size, ex);
-                    return Mono.just(ResponseEntity
-                            .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                            .build());
+                    log.error("Erro ao listar posts paginados - página: {}, tamanho: {}", page, size, ex);
+                    return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build());
                 });
     }
 
     /**
-     * Busca um post específico pelo slug/nome.
+     * Busca um post específico pelo seu slug.
      *
-     * @param slug Slug do post (validado)
-     * @return Post encontrado ou 404 se não existir
+     * @param slug identificador amigável do post, validado contra o padrão
+     *             {@link #SLUG_PATTERN}; não pode ser nulo nem vazio
+     * @return {@link Mono} contendo um {@link ResponseEntity} com {@link PostResponse}
+     * quando o post é encontrado, {@code 404 (Not Found)} caso não exista post para o
+     * slug informado ou {@code 500 (Internal Server Error)} em caso de erro interno
      */
     @GetMapping("/{slug}")
     public Mono<ResponseEntity<PostResponse>> getPost(
@@ -79,12 +88,9 @@ public class PostsController {
             @NotBlank(message = "Slug não pode ser vazio")
             @Pattern(regexp = SLUG_PATTERN, message = "Slug inválido")
             String slug) {
-
-        log.debug("Buscando post publicado com slug: {}", slug);
-
+        
         return postService.getPostBySlug(slug, false)
-                .map(postMapper::toResponse)
-                .flatMap(Mono::justOrEmpty)
+                .flatMap(post -> Mono.justOrEmpty(postMapper.toResponse(post)))
                 .map(ResponseEntity::ok)
                 .defaultIfEmpty(ResponseEntity.notFound().build())
                 .onErrorResume(ex -> {

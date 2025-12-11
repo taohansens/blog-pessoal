@@ -29,6 +29,7 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 @Validated
 @Slf4j
+@SuppressWarnings("NullableProblems")
 public class PostsController {
 
     private static final int MAX_PAGE_SIZE = 50;
@@ -88,7 +89,7 @@ public class PostsController {
             @NotBlank(message = "Slug não pode ser vazio")
             @Pattern(regexp = SLUG_PATTERN, message = "Slug inválido")
             String slug) {
-        
+
         return postService.getPostBySlug(slug, false)
                 .flatMap(post -> Mono.justOrEmpty(postMapper.toResponse(post)))
                 .map(ResponseEntity::ok)

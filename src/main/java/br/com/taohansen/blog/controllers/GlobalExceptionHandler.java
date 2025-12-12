@@ -22,28 +22,23 @@ import java.util.stream.Collectors;
 
 /**
  * Handler global de exceções para a API REST.
- * 
- * Centraliza o tratamento de erros seguindo padrões RESTful:
- * - Respostas padronizadas
- * - Códigos HTTP apropriados
- * - Mensagens de erro claras
- * - Logging adequado
+ * <p>
+ * Padroniza respostas de erro com códigos HTTP adequados e mensagens claras,
+ * logando cada ocorrência para observabilidade.
  */
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
 
-    /**
-     * Trata erros de validação de parâmetros (@RequestParam, @PathVariable).
-     */
+    /** Trata erros de validação de parâmetros (@RequestParam, @PathVariable). */
     @ExceptionHandler(ConstraintViolationException.class)
     public Mono<ResponseEntity<ErrorResponse>> handleConstraintViolation(ConstraintViolationException ex) {
         log.warn("Violação de validação: {}", ex.getMessage());
-        
+
         List<String> errors = ex.getConstraintViolations().stream()
                 .map(ConstraintViolation::getMessage)
                 .collect(Collectors.toList());
-        
+
         ErrorResponse error = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.BAD_REQUEST.value())
@@ -51,21 +46,19 @@ public class GlobalExceptionHandler {
                 .message("Parâmetros inválidos")
                 .errors(errors)
                 .build();
-        
+
         return Mono.just(ResponseEntity.badRequest().body(error));
     }
 
-    /**
-     * Trata erros de validação de body (@RequestBody).
-     */
+    /** Trata erros de validação de body (@RequestBody). */
     @ExceptionHandler(WebExchangeBindException.class)
     public Mono<ResponseEntity<ErrorResponse>> handleWebExchangeBindException(WebExchangeBindException ex) {
         log.warn("Erro de validação de body: {}", ex.getMessage());
-        
+
         List<String> errors = ex.getBindingResult().getFieldErrors().stream()
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .collect(Collectors.toList());
-        
+
         ErrorResponse error = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.BAD_REQUEST.value())
@@ -73,72 +66,64 @@ public class GlobalExceptionHandler {
                 .message("Dados inválidos no corpo da requisição")
                 .errors(errors)
                 .build();
-        
+
         return Mono.just(ResponseEntity.badRequest().body(error));
     }
 
-    /**
-     * Trata erros de comunicação com o CouchDB.
-     */
+    /** Trata erros de comunicação com o CouchDB. */
     @ExceptionHandler(WebClientResponseException.class)
     public Mono<ResponseEntity<ErrorResponse>> handleWebClientException(WebClientResponseException ex) {
         HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
         if (status == null) {
             status = HttpStatus.INTERNAL_SERVER_ERROR;
         }
-        
-        log.error("Erro na comunicação com CouchDB. Status: {}, Mensagem: {}", 
+
+        log.error("Erro na comunicação com CouchDB. Status: {}, Mensagem: {}",
                 ex.getStatusCode(), ex.getMessage(), ex);
-        
+
         ErrorResponse error = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(status.value())
                 .error("Erro ao comunicar com o banco de dados")
-                .message(ex.getStatusCode().is5xxServerError() 
-                        ? "Erro interno do servidor de banco de dados" 
+                .message(ex.getStatusCode().is5xxServerError()
+                        ? "Erro interno do servidor de banco de dados"
                         : "Erro ao processar requisição no banco de dados")
                 .build();
-        
+
         return Mono.just(ResponseEntity.status(status).body(error));
     }
 
-    /**
-     * Trata IllegalArgumentException (validações de negócio).
-     */
+    /** Trata IllegalArgumentException (validações de negócio). */
     @ExceptionHandler(IllegalArgumentException.class)
     public Mono<ResponseEntity<ErrorResponse>> handleIllegalArgumentException(IllegalArgumentException ex) {
         log.warn("Argumento inválido: {}", ex.getMessage());
-        
+
         ErrorResponse error = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.BAD_REQUEST.value())
                 .error("Argumento inválido")
                 .message(ex.getMessage())
                 .build();
-        
+
         return Mono.just(ResponseEntity.badRequest().body(error));
     }
 
-    /**
-     * Trata exceções genéricas não tratadas.
-     */
+    /** Trata exceções genéricas não tratadas. */
     @ExceptionHandler(Exception.class)
     public Mono<ResponseEntity<ErrorResponse>> handleGenericException(Exception ex) {
         log.error("Erro inesperado: {}", ex.getMessage(), ex);
-        
+
         ErrorResponse error = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
                 .error("Erro interno do servidor")
                 .message("Ocorreu um erro inesperado. Por favor, tente novamente mais tarde.")
                 .build();
-        
+
         return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error));
     }
 
-    /**
-     * Modelo padronizado de resposta de erro.
-     */
+    /** Modelo padronizado de resposta de erro. */
     @Data
     @Builder
     @JsonInclude(JsonInclude.Include.NON_NULL)

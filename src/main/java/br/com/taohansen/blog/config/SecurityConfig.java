@@ -16,7 +16,13 @@ import org.springframework.security.web.server.context.ServerSecurityContextRepo
 import org.springframework.security.web.server.context.WebSessionServerSecurityContextRepository;
 
 /**
- * Configuração de segurança para autenticação OAuth2 com GitHub.
+ * Configura a segurança reativa da aplicação (WebFlux).
+ * <p>
+ * - Desabilita CSRF para uso como API REST.
+ * - Libera leitura pública de posts e endpoints de autenticação/OAuth2.
+ * - Autentica via JWT (filtro) e, após autenticado, delega ao filtro de autorização
+ *   para checagem de privilégios de administrador em operações sensíveis.
+ * - Aplica handler de sucesso do OAuth2 para emitir token/admin quando apropriado.
  */
 @Configuration
 @EnableWebFluxSecurity
@@ -29,21 +35,29 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final OAuth2SuccessHandler oauth2SuccessHandler;
 
+    /**
+     * Define a cadeia de filtros de segurança:
+     * <ul>
+     *     <li>CSRF desabilitado (API REST).</li>
+     *     <li>Leituras públicas em `/api/posts/**` e endpoints de auth/OAuth2.</li>
+     *     <li>Demais rotas requerem autenticação (JWT ou sessão OAuth2).</li>
+     *     <li>`JwtAuthenticationFilter` antes da fase AUTHENTICATION.</li>
+     *     <li>`AdminAuthorizationFilter` após AUTHORIZATION para validar privilégios de admin.</li>
+     * </ul>
+     *
+     * @param http builder reativo do Spring Security
+     * @return cadeia de filtros configurada
+     */
     @Bean
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
         http
-            .csrf(ServerHttpSecurity.CsrfSpec::disable) // Desabilitar CSRF para API REST
+            .csrf(ServerHttpSecurity.CsrfSpec::disable)
             .authorizeExchange(exchanges -> exchanges
-                // Liberar preflight CORS
                 .pathMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
-                // Permitir acesso público a operações de leitura (GET)
+                .pathMatchers("/favicon.ico").permitAll()
                 .pathMatchers("/api/posts/**").permitAll()
-                // Permitir acesso aos endpoints de autenticação (frontend precisa verificar status)
                 .pathMatchers("/api/auth/**").permitAll()
-                // Permitir acesso ao endpoint de login do OAuth2
                 .pathMatchers("/login/oauth2/**", "/oauth2/**").permitAll()
-                // Todos os outros endpoints requerem autenticação
-                // O AdminAuthorizationFilter fará a verificação específica para POST/PUT/DELETE
                 .anyExchange().authenticated()
             )
             .oauth2Login(oauth2 -> oauth2
@@ -62,6 +76,12 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * Usa a sessão reativa como repositório de contexto de segurança
+     * para armazenar Authentication entre requisições.
+     *
+     * @return repositório de contexto baseado em WebSession
+     */
     @Bean
     public ServerSecurityContextRepository securityContextRepository() {
         return new WebSessionServerSecurityContextRepository();

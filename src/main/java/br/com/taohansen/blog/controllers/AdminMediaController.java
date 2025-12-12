@@ -73,7 +73,7 @@ public class AdminMediaController {
                         return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).build());
                     }
                     return cloudinaryService.listImages(max)
-                            .map(resources -> ResponseEntity.ok(resources))
+                            .map(ResponseEntity::ok)
                             .onErrorResume(ex -> {
                                 log.error("Erro ao listar imagens", ex);
                                 return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build());

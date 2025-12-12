@@ -64,7 +64,7 @@ public class CouchDbRepository {
                     return Flux.fromIterable(response.getRows())
                             .filter(row -> row.getDoc() != null)
                             .map(postMapper::mapToPost)
-                            .filter(post -> post != null)
+                            .filter(Objects::nonNull)
                             .filter(post -> {
                                 if (!includeDrafts && Boolean.TRUE.equals(post.getDraft())) {
                                     log.debug("Post em rascunho filtrado: {}", post.getTitle());
@@ -294,9 +294,7 @@ public class CouchDbRepository {
      */
     private Mono<Boolean> checkSlugExistsFallback(String slug, String excludePostId) {
         return getPostBySlug(slug, true)
-                .map(post -> {
-                    return excludePostId == null || !excludePostId.equals(post.getId());
-                })
+                .map(post -> excludePostId == null || !excludePostId.equals(post.getId()))
                 .defaultIfEmpty(false)
                 .onErrorReturn(false);
     }

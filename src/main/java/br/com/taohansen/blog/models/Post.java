@@ -18,7 +18,7 @@ import java.util.List;
 /**
  * Modelo de domínio representando um post completo do blog.
  * Contém todas as informações do post incluindo conteúdo.
- * 
+ * <p>
  * Segue princípios de imutabilidade parcial e validação de dados.
  */
 @Data
@@ -26,14 +26,14 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Post {
-    
+
     /**
      * ID único do documento no CouchDB.
      */
     @NotBlank(message = "ID não pode ser vazio")
     @Size(max = 255, message = "ID não pode exceder 255 caracteres")
     private String id;
-    
+
     /**
      * Revisão do documento no CouchDB (usado para controle de concorrência).
      * Não exposto na API pública por questões de segurança.
@@ -41,7 +41,7 @@ public class Post {
     @JsonProperty("_rev")
     @JsonIgnore // Não serializar na resposta da API
     private String revision;
-    
+
     /**
      * Tipo do documento (padrão: blog_post).
      * Usado para identificação no CouchDB.
@@ -55,51 +55,51 @@ public class Post {
     @NotBlank(message = "Título não pode ser vazio")
     @Size(min = 1, max = 500, message = "Título deve ter entre 1 e 500 caracteres")
     private String title;
-    
+
     /**
      * Slug único do post (usado na URL).
      */
     @NotBlank(message = "Slug não pode ser vazio")
     @Size(min = 1, max = 200, message = "Slug deve ter entre 1 e 200 caracteres")
     private String slug;
-    
+
     /**
      * Data e hora de publicação do post.
      */
     @NotNull(message = "Data não pode ser nula")
     private LocalDateTime date;
-    
+
     /**
      * Data e hora da última atualização do post.
      * Null se o post nunca foi atualizado.
      */
     private LocalDateTime updatedAt;
-    
+
     /**
      * Indica se o post é um rascunho.
      * Rascunhos só são visíveis para administradores.
      */
     @Builder.Default
     private Boolean draft = false;
-    
+
     /**
      * Lista de tags do post.
      */
     @Builder.Default
     private List<@NotBlank @Size(max = 50) String> tags = new ArrayList<>();
-    
+
     /**
      * Dados da imagem usada no frontend (opcional).
      */
     @Valid
     private PostImage image;
-    
+
     /**
      * Resumo/descrição curta do post.
      */
     @Size(max = 1000, message = "Resumo não pode exceder 1000 caracteres")
     private String summary;
-    
+
     /**
      * Conteúdo completo do post (markdown ou HTML).
      */

@@ -16,6 +16,7 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Serviço responsável por operações de mídia no Cloudinary:
@@ -42,7 +43,7 @@ public class CloudinaryService {
         }
 
         if (filePart.headers().getContentType() != null &&
-                !"image".equalsIgnoreCase(filePart.headers().getContentType().getType())) {
+                !"image".equalsIgnoreCase(Objects.requireNonNull(filePart.headers().getContentType()).getType())) {
             return Mono.error(new ServerWebInputException("Arquivo deve ser uma imagem"));
         }
 

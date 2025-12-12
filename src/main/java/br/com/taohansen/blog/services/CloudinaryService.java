@@ -5,11 +5,10 @@ import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ServerWebInputException;
-import org.springframework.core.io.buffer.DataBufferUtils;
-import org.springframework.core.io.buffer.DataBuffer;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -18,6 +17,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Serviço responsável por operações de mídia no Cloudinary:
+ * upload, listagem e deleção de imagens.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -27,6 +30,12 @@ public class CloudinaryService {
 
     private final Cloudinary cloudinary;
 
+    /**
+     * Faz upload de uma imagem para o Cloudinary.
+     *
+     * @param filePart arquivo multipart de imagem
+     * @return {@link Mono} com metadados da mídia criada
+     */
     public Mono<MediaResource> uploadImage(FilePart filePart) {
         if (filePart == null) {
             return Mono.error(new ServerWebInputException("Arquivo é obrigatório"));
@@ -52,6 +61,12 @@ public class CloudinaryService {
                         .subscribeOn(Schedulers.boundedElastic()));
     }
 
+    /**
+     * Lista imagens recentes do Cloudinary, com limite máximo configurável.
+     *
+     * @param maxResults quantidade máxima de itens (padrão 30, máximo 100)
+     * @return {@link Mono} com lista de metadados das mídias
+     */
     public Mono<List<MediaResource>> listImages(Integer maxResults) {
         int limit = (maxResults == null || maxResults <= 0) ? DEFAULT_MAX_RESULTS : Math.min(maxResults, 100);
 
@@ -64,7 +79,7 @@ public class CloudinaryService {
                 .map(result -> {
                     List<Map<String, Object>> resources = (List<Map<String, Object>>) result.get("resources");
                     if (resources == null) {
-                        return List.<MediaResource>of();
+                        return List.of();
                     }
                     return resources.stream()
                             .map(this::mapToResource)
@@ -72,6 +87,12 @@ public class CloudinaryService {
                 });
     }
 
+    /**
+     * Remove uma imagem do Cloudinary pelo seu `public_id`.
+     *
+     * @param publicId identificador público da imagem
+     * @return {@link Mono} vazio que completa após a exclusão
+     */
     public Mono<Void> deleteImage(String publicId) {
         if (publicId == null || publicId.isBlank()) {
             return Mono.error(new IllegalArgumentException("publicId é obrigatório"));
@@ -84,6 +105,12 @@ public class CloudinaryService {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
+    /**
+     * Converte a resposta do Cloudinary em {@link MediaResource}.
+     *
+     * @param data mapa retornado pela API do Cloudinary
+     * @return metadados mapeados ou {@code null} se entrada for nula
+     */
     private MediaResource mapToResource(Map<String, Object> data) {
         if (data == null) {
             return null;

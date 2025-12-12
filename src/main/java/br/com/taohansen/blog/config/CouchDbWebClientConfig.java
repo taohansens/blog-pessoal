@@ -16,8 +16,7 @@ import java.util.Base64;
 
 /**
  * Configuração do WebClient para comunicação com CouchDB.
- * 
- * Configurações de segurança e performance:
+ * Configurações de segurança e desempenho:
  * - Autenticação Basic Auth
  * - Timeouts configuráveis
  * - Logging de requisições/respostas
@@ -43,7 +42,7 @@ public class CouchDbWebClientConfig {
 
     /**
      * Cria o WebClient configurado para comunicação com CouchDB.
-     * 
+     *
      * @return WebClient configurado
      */
     @Bean
@@ -51,13 +50,13 @@ public class CouchDbWebClientConfig {
         if (couchdbUri == null || couchdbUri.isBlank()) {
             throw new IllegalStateException("couchdb.uri não pode ser vazio");
         }
-        
+
         String authHeader = createBasicAuthHeader(username, password);
         Duration timeout = Duration.ofSeconds(timeoutSeconds);
-        
-        log.info("Configurando WebClient para CouchDB: {} (timeout: {}s)", 
+
+        log.info("Configurando WebClient para CouchDB: {} (timeout: {}s)",
                 maskUri(couchdbUri), timeoutSeconds);
-        
+
         return WebClient.builder()
                 .baseUrl(couchdbUri)
                 .defaultHeader(HttpHeaders.AUTHORIZATION, authHeader)
@@ -75,7 +74,7 @@ public class CouchDbWebClientConfig {
 
     /**
      * Cria o header de autenticação Basic Auth.
-     * 
+     *
      * @param username Usuário do CouchDB
      * @param password Senha do CouchDB
      * @return Header de autorização
@@ -84,7 +83,7 @@ public class CouchDbWebClientConfig {
         if (username == null || password == null) {
             throw new IllegalStateException("Credenciais do CouchDB não podem ser nulas");
         }
-        
+
         String credentials = username + ":" + password;
         byte[] encodedBytes = Base64.getEncoder().encode(credentials.getBytes(StandardCharsets.UTF_8));
         return BASIC_AUTH_PREFIX + new String(encodedBytes, StandardCharsets.UTF_8);
@@ -96,8 +95,8 @@ public class CouchDbWebClientConfig {
     private ExchangeFilterFunction logRequest() {
         return ExchangeFilterFunction.ofRequestProcessor(clientRequest -> {
             if (log.isDebugEnabled()) {
-                log.debug("CouchDB Request: {} {}", 
-                        clientRequest.method(), 
+                log.debug("CouchDB Request: {} {}",
+                        clientRequest.method(),
                         maskUri(clientRequest.url().toString()));
             }
             return Mono.just(clientRequest);

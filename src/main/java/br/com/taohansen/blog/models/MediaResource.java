@@ -8,6 +8,9 @@ import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
 
+/**
+ * Representa metadados de um recurso de mídia armazenado no Cloudinary.
+ */
 @Data
 @Builder
 @NoArgsConstructor

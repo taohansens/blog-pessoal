@@ -26,7 +26,11 @@ public class PagedPostResponse {
     private long total;
     private boolean hasNext;
 
-    /** Calcula o total de páginas com base em `total` e `size`. */
+    /**
+     * Calcula o total de páginas com base em `total` e `size`.
+     *
+     * @return quantidade total de páginas
+     */
     public int getTotalPages() {
         if (size == 0) {
             return 0;
@@ -34,12 +38,20 @@ public class PagedPostResponse {
         return (int) Math.ceil((double) total / size);
     }
 
-    /** Indica se há página anterior. */
+    /**
+     * Indica se há página anterior.
+     *
+     * @return {@code true} se a página atual for maior que zero
+     */
     public boolean hasPrevious() {
         return page > 0;
     }
 
-    /** Indica se a página retornou lista vazia. */
+    /**
+     * Indica se a página retornou lista vazia.
+     *
+     * @return {@code true} se não há posts nesta página
+     */
     public boolean isEmpty() {
         return posts == null || posts.isEmpty();
     }

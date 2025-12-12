@@ -34,11 +34,10 @@ public class AuthController {
     private final JwtService jwtService;
 
     /**
-     * Retorna informações sobre o usuário autenticado.
-     * Aceita tanto autenticação OAuth2 quanto JWT.
-     * 
-     * @param authentication Autenticação atual
-     * @return Informações do usuário ou 401 se não autenticado
+     * Retorna informações sobre o usuário autenticado (OAuth2 ou JWT).
+     *
+     * @param exchange contexto da requisição (necessário para ler header Authorization quando JWT)
+     * @return informações do usuário ou 401 se não autenticado
      */
     @GetMapping("/me")
     public Mono<ResponseEntity<Map<String, Object>>> getCurrentUser(
@@ -156,6 +155,10 @@ public class AuthController {
     /**
      * Endpoint para obter token JWT após autenticação OAuth2.
      * Usado quando o usuário é redirecionado após login.
+     *
+     * @param token           token vindo na URL (redirecionamento OAuth2), opcional
+     * @param authentication  autenticação atual (OAuth2) caso precise gerar novo token
+     * @return token JWT em caso de admin autenticado ou status apropriado
      */
     @GetMapping("/token")
     public Mono<ResponseEntity<Map<String, String>>> getToken(

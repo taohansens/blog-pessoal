@@ -242,7 +242,7 @@ public class CouchDbRepository {
      *
      * @param slug          O slug a ser verificado (validado e sanitizado)
      * @param excludePostId ID do post a ser excluído da verificação (útil para edição)
-     * @return Mono<Boolean> true se o slug existe, false caso contrário
+     * @return {@code Mono&lt;Boolean&gt;} true se o slug existe, false caso contrário
      */
     public Mono<Boolean> slugExists(String slug, String excludePostId) {
         if (slug == null || slug.isBlank()) {
@@ -436,7 +436,7 @@ public class CouchDbRepository {
      *
      * @param id       ID do post a ser deletado
      * @param revision Revisão do post (necessária para deletar no CouchDB)
-     * @return Mono<Void> que completa quando o post é deletado
+     * @return {@code Mono&lt;Void&gt;} que completa quando o post é deletado
      */
     public Mono<Void> deletePost(String id, String revision) {
         if (id == null || id.isBlank()) {

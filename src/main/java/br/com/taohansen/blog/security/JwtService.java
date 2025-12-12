@@ -47,6 +47,10 @@ public class JwtService {
 
     /**
      * Cria o token JWT com os claims fornecidos.
+     *
+     * @param claims  claims a serem incluídos
+     * @param subject identificador principal (email/login)
+     * @return token JWT assinado
      */
     private String createToken(Map<String, Object> claims, String subject) {
         Date now = new Date();
@@ -105,6 +109,9 @@ public class JwtService {
 
     /**
      * Extrai o email/login do token.
+     *
+     * @param token JWT
+     * @return subject (email/login) do token
      */
     public String extractSubject(String token) {
         return extractClaim(token, Claims::getSubject);
@@ -112,6 +119,9 @@ public class JwtService {
 
     /**
      * Extrai se o usuário é administrador do token.
+     *
+     * @param token JWT
+     * @return {@code true} se admin, {@code false} caso contrário
      */
     public Boolean extractIsAdmin(String token) {
         Claims claims = extractAllClaims(token);
@@ -120,6 +130,9 @@ public class JwtService {
 
     /**
      * Extrai o email do token.
+     *
+     * @param token JWT
+     * @return email contido no token
      */
     public String extractEmail(String token) {
         Claims claims = extractAllClaims(token);
@@ -128,6 +141,9 @@ public class JwtService {
 
     /**
      * Extrai o login do token.
+     *
+     * @param token JWT
+     * @return login contido no token
      */
     public String extractLogin(String token) {
         Claims claims = extractAllClaims(token);
@@ -136,6 +152,10 @@ public class JwtService {
 
     /**
      * Extrai uma claim específica do token.
+     *
+     * @param token           JWT
+     * @param claimsResolver  função que lê a claim
+     * @return valor da claim resolvida
      */
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = extractAllClaims(token);
@@ -144,6 +164,9 @@ public class JwtService {
 
     /**
      * Extrai todas as claims do token.
+     *
+     * @param token JWT
+     * @return claims do token
      */
     private Claims extractAllClaims(String token) {
         SecretKey key = getSigningKey();
@@ -156,6 +179,9 @@ public class JwtService {
 
     /**
      * Verifica se o token está expirado.
+     *
+     * @param token JWT
+     * @return {@code true} se expirado
      */
     private Boolean isTokenExpired(String token) {
         return extractExpiration(token).before(new Date());
@@ -163,6 +189,9 @@ public class JwtService {
 
     /**
      * Extrai a data de expiração do token.
+     *
+     * @param token JWT
+     * @return data de expiração
      */
     private Date extractExpiration(String token) {
         return extractClaim(token, Claims::getExpiration);
@@ -170,6 +199,8 @@ public class JwtService {
 
     /**
      * Obtém a chave de assinatura.
+     *
+     * @return chave HMAC baseada no segredo configurado
      */
     private SecretKey getSigningKey() {
         byte[] keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);

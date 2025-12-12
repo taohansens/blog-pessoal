@@ -30,7 +30,12 @@ import java.util.stream.Collectors;
 @Slf4j
 public class GlobalExceptionHandler {
 
-    /** Trata erros de validação de parâmetros (@RequestParam, @PathVariable). */
+    /**
+     * Trata erros de validação de parâmetros (@RequestParam, @PathVariable).
+     *
+     * @param ex exceção capturada
+     * @return resposta padronizada de erro (400)
+     */
     @ExceptionHandler(ConstraintViolationException.class)
     public Mono<ResponseEntity<ErrorResponse>> handleConstraintViolation(ConstraintViolationException ex) {
         log.warn("Violação de validação: {}", ex.getMessage());
@@ -50,7 +55,12 @@ public class GlobalExceptionHandler {
         return Mono.just(ResponseEntity.badRequest().body(error));
     }
 
-    /** Trata erros de validação de body (@RequestBody). */
+    /**
+     * Trata erros de validação de body (@RequestBody).
+     *
+     * @param ex exceção capturada
+     * @return resposta padronizada de erro (400)
+     */
     @ExceptionHandler(WebExchangeBindException.class)
     public Mono<ResponseEntity<ErrorResponse>> handleWebExchangeBindException(WebExchangeBindException ex) {
         log.warn("Erro de validação de body: {}", ex.getMessage());
@@ -70,7 +80,12 @@ public class GlobalExceptionHandler {
         return Mono.just(ResponseEntity.badRequest().body(error));
     }
 
-    /** Trata erros de comunicação com o CouchDB. */
+    /**
+     * Trata erros de comunicação com o CouchDB.
+     *
+     * @param ex exceção do WebClient
+     * @return resposta padronizada com status propagado do CouchDB
+     */
     @ExceptionHandler(WebClientResponseException.class)
     public Mono<ResponseEntity<ErrorResponse>> handleWebClientException(WebClientResponseException ex) {
         HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
@@ -93,7 +108,12 @@ public class GlobalExceptionHandler {
         return Mono.just(ResponseEntity.status(status).body(error));
     }
 
-    /** Trata IllegalArgumentException (validações de negócio). */
+    /**
+     * Trata IllegalArgumentException (validações de negócio).
+     *
+     * @param ex exceção de validação de domínio
+     * @return resposta 400 com mensagem da exceção
+     */
     @ExceptionHandler(IllegalArgumentException.class)
     public Mono<ResponseEntity<ErrorResponse>> handleIllegalArgumentException(IllegalArgumentException ex) {
         log.warn("Argumento inválido: {}", ex.getMessage());
@@ -108,7 +128,12 @@ public class GlobalExceptionHandler {
         return Mono.just(ResponseEntity.badRequest().body(error));
     }
 
-    /** Trata exceções genéricas não tratadas. */
+    /**
+     * Trata exceções genéricas não tratadas.
+     *
+     * @param ex exceção inesperada
+     * @return resposta 500 padronizada
+     */
     @ExceptionHandler(Exception.class)
     public Mono<ResponseEntity<ErrorResponse>> handleGenericException(Exception ex) {
         log.error("Erro inesperado: {}", ex.getMessage(), ex);

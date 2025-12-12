@@ -85,6 +85,10 @@ public class AdminAuthorizationService {
 
     /**
      * Resultado da verificação de privilégios de administrador.
+     *
+     * @param authenticated indica se havia autenticação válida
+     * @param admin         indica se o usuário possui privilégio de administrador
+     * @param userIdentifier identificador (email/login) usado na verificação
      */
     public record AdminAuthResult(boolean authenticated, boolean admin, String userIdentifier) {
     }

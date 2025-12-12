@@ -1,305 +1,94 @@
 # Blog Pessoal API
 
-API REST reativa para gerenciamento de posts de blog, desenvolvida com Spring Boot WebFlux e integrada com CouchDB.
+API REST reativa (Spring WebFlux) para gerenciamento de posts e mídias de blog, com autenticação GitHub OAuth2, emissão de JWT apenas para administradores e persistência no CouchDB.
 
-## 🚀 Tecnologias
+## Tecnologias principais
+- Java 21
+- Spring Boot (WebFlux, Security, Validation)
+- CouchDB
+- Cloudinary (mídias)
+- Maven
+- Docker / Docker Compose
 
-- **Java 21**
-- **Spring Boot 4.0.0**
-- **Spring WebFlux**
-- **Apache CouchDB**
-- **Lombok**
-- **Maven**
-- **Docker**
-
-## 📋 Pré-requisitos
-
-- Java 21 ou superior
-- Maven 3.6+
-- CouchDB 3.x (ou usar Docker Compose)
+## Pré-requisitos
+- Java 21+
+- Maven 3.9+ (ou usar `./mvnw`)
+- CouchDB 3.x (ou subir via Docker Compose)
 - Docker e Docker Compose (opcional)
 
-## 🛠️ Instalação e Execução
-
-### Opção 1: Execução Local
-
-1. **Clone o repositório**
-```bash
-git clone <url-do-repositorio>
-cd blogpessoaltao
+## Configuração rápida
+Variáveis de ambiente principais (veja também `application.yml`):
 ```
-
-2. **Configure as variáveis de ambiente**
-```bash
-export COUCHDB_URI=http://localhost:5984
-export COUCHDB_USER=admin
-export COUCHDB_PASSWORD=admin
-export COUCHDB_DB_NAME=blog
-export CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
-```
-
-3. **Execute a aplicação**
-```bash
-./mvnw spring-boot:run
-```
-
-Ou usando Maven instalado:
-```bash
-mvn spring-boot:run
-```
-
-### Opção 2: Docker Compose (Recomendado)
-
-1. **Crie um arquivo `.env`** (opcional)
-```bash
-COUCHDB_URI=http://couchdb:5984
+COUCHDB_URI=http://localhost:5986
 COUCHDB_USER=admin
 COUCHDB_PASSWORD=admin
 COUCHDB_DB_NAME=blog
-CORS_ALLOWED_ORIGINS=http://localhost:3000,https://meusite.com
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+APP_ADMIN_EMAIL=seu-email-admin@dominio.com
+APP_JWT_SECRET=chave-secreta-256bits
+APP_JWT_EXPIRATION=86400000
 ```
 
-2. **Execute com Docker Compose**
+Porta padrão: `9899`.
+
+## Executar local
+```bash
+./mvnw spring-boot:run
+# ou
+mvn spring-boot:run
+```
+
+## Executar com Docker Compose
 ```bash
 docker-compose up -d --build
 ```
+Use um `.env` com as variáveis acima se preferir.
 
-Para mais detalhes sobre Docker, consulte [DOCKER.md](./DOCKER.md).
+## Autenticação e autorização
+- Login via GitHub OAuth2.
+- JWT emitido somente para usuários cujo e-mail/login coincide com `app.admin.email`.
+- Filtro `AdminAuthorizationFilter` protege escritas em posts e todas as rotas de mídia.
+- Endpoints públicos: leitura de posts (`/api/posts/**`), auth (`/api/auth/**`), OAuth2 login.
 
-## 📡 Endpoints da API
+## Endpoints principais
+- Públicos:
+  - `GET /api/posts/all` — lista posts publicados (mais recentes).
+  - `GET /api/posts/{slug}` — detalha post.
+  - `GET /api/posts?page=&size=` — paginação de posts.
+- Admin (JWT/OAuth2 admin):
+  - `GET /api/admin/posts` (paginado), `GET /api/admin/posts/all`, `GET /api/admin/posts/{slug}`
+  - `POST /api/admin/posts`, `PUT /api/admin/posts/{id}`, `DELETE /api/admin/posts/{id}`
+  - Mídias: `POST /api/admin/media/upload`, `GET /api/admin/media`, `DELETE /api/admin/media/{publicId}`
+- Auth helpers:
+  - `GET /api/auth/me` — info do usuário autenticado (admin).
+  - `GET /api/auth/token` — retorna token JWT pós OAuth2 (admin).
 
-Base URL: `http://localhost:9899/api/posts`
+## Tratamento de erros
+`GlobalExceptionHandler` padroniza respostas com timestamp, status, error e message.
 
-### 1. Listar Todos os Posts
-
-Retorna todos os posts ordenados por data (mais recentes primeiro).
-
-**GET** `/api/posts/all`
-
-**Resposta 200:**
-```json
-[
-  {
-    "id": "post-meu-primeiro-post",
-    "title": "Meu Primeiro Post",
-    "slug": "meu-primeiro-post",
-    "date": "2024-01-15",
-    "tags": ["java", "spring"],
-    "summary": "Resumo do post",
-    "content": "Conteúdo completo do post..."
-  }
-]
+## Estrutura (resumo)
+```
+src/main/java/br/com/taohansen/blog/
+  BlogpessoaltaoApplication.java
+  config/         # CORS, Cloudinary, Security, WebClient, favicon 204
+  controllers/    # públicos, admin, auth, exceptions
+  controllers/admin/
+  dto/post/       # responses
+  mappers/        # MapStruct DTO mapping
+  models/         # domain/requests/views
+  repository/     # CouchDbRepository (WebClient)
+  security/       # JWT, OAuth2 success, admin auth
+  services/       # Post, Slug, Cloudinary, mappers
 ```
 
-### 2. Buscar Post por Slug
-
-Retorna um post específico pelo seu slug.
-
-**GET** `/api/posts/{slug}`
-
-**Parâmetros:**
-- `slug` (path): Slug do post (ex: `meu-primeiro-post`)
-
-**Resposta 200:**
-```json
-{
-  "id": "post-meu-primeiro-post",
-  "title": "Meu Primeiro Post",
-  "slug": "meu-primeiro-post",
-  "date": "2024-01-15",
-  "tags": ["java", "spring"],
-  "summary": "Resumo do post",
-  "content": "Conteúdo completo do post..."
-}
-```
-
-**Resposta 404:** Post não encontrado
-
-### 3. Listar Posts Paginados
-
-Retorna posts paginados com metadados (sem conteúdo completo).
-
-**GET** `/api/posts?page={page}&size={size}`
-
-**Parâmetros:**
-- `page` (query, opcional): Número da página (padrão: 0)
-- `size` (query, opcional): Tamanho da página (padrão: 10, máximo: 50)
-
-**Exemplo:**
-```
-GET /api/posts?page=0&size=10
-```
-
-**Resposta 200:**
-```json
-{
-  "posts": [
-    {
-      "id": "post-meu-primeiro-post",
-      "title": "Meu Primeiro Post",
-      "slug": "meu-primeiro-post",
-      "date": "2024-01-15",
-      "tags": ["java", "spring"],
-      "summary": "Resumo do post"
-    }
-  ],
-  "page": 0,
-  "size": 10,
-  "total": 25,
-  "hasNext": true
-}
-```
-
-## ⚙️ Configuração
-
-### Variáveis de Ambiente
-
-| Variável | Descrição | Padrão |
-|----------|-----------|--------|
-| `COUCHDB_URI` | URI do CouchDB | `http://localhost:5986` |
-| `COUCHDB_USER` | Usuário do CouchDB | - |
-| `COUCHDB_PASSWORD` | Senha do CouchDB | - |
-| `COUCHDB_DB_NAME` | Nome do banco de dados | `blog` |
-| `CORS_ALLOWED_ORIGINS` | Origens permitidas (separadas por vírgula) | `localhost` |
-
-### application.yml
-
-O arquivo `src/main/resources/application.yml` contém as configurações padrão:
-
-```yaml
-server:
-  port: 9899
-
-couchdb:
-  uri: ${COUCHDB_URI:http://localhost:5986}
-  username: ${COUCHDB_USER}
-  password: ${COUCHDB_PASSWORD}
-  database: ${COUCHDB_DB_NAME:blog}
-
-cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:localhost}
-```
-
-## 📁 Estrutura do Projeto
-
-```
-blogpessoaltao/
-├── src/
-│   ├── main/
-│   │   ├── java/br/com/taohansen/blog/
-│   │   │   ├── BlogpessoaltaoApplication.java
-│   │   │   ├── config/
-│   │   │   │   ├── CorsConfig.java          # Configuração CORS
-│   │   │   │   └── CouchDbWebClientConfig.java  # Configuração WebClient
-│   │   │   ├── controllers/
-│   │   │   │   ├── PostsController.java      # Endpoints REST
-│   │   │   │   └── GlobalExceptionHandler.java  # Tratamento de erros
-│   │   │   ├── models/
-│   │   │   │   ├── Post.java                # Modelo completo do post
-│   │   │   │   ├── PostMetadata.java        # Metadados do post
-│   │   │   │   ├── PagedPostsResponse.java  # Resposta paginada
-│   │   │   │   └── PostsViewResponse.java   # Resposta do CouchDB
-│   │   │   └── services/
-│   │   │       └── CouchDbService.java      # Lógica de negócio
-│   │   └── resources/
-│   │       └── application.yml              # Configurações
-│   └── test/                                # Testes
-├── docker-compose.yml                       # Orquestração Docker
-├── Dockerfile                              # Build da imagem
-├── pom.xml                                 # Dependências Maven
-└── README.md                               # Este arquivo
-```
-
-## 🔒 CORS
-
-A API suporta configuração de CORS via variável de ambiente `CORS_ALLOWED_ORIGINS`. Você pode especificar múltiplas origens separadas por vírgula:
-
+## Build e testes
 ```bash
-export CORS_ALLOWED_ORIGINS=http://localhost:3000,https://meusite.com,https://www.meusite.com
-```
-
-## 🐳 Docker
-
-Para executar com Docker, consulte o arquivo [DOCKER.md](./DOCKER.md) para instruções detalhadas.
-
-**Comando rápido:**
-```bash
-docker-compose up -d --build
-```
-
-## 🧪 Testes
-
-Execute os testes com:
-```bash
+./mvnw clean package
 ./mvnw test
 ```
 
-## 📝 Modelos de Dados
-
-### Post
-```json
-{
-  "id": "string",
-  "_rev": "string",
-  "type": "blog_post",
-  "title": "string",
-  "slug": "string",
-  "date": "YYYY-MM-DD",
-  "tags": ["string"],
-  "summary": "string",
-  "content": "string"
-}
-```
-
-### PostMetadata
-```json
-{
-  "id": "string",
-  "slug": "string",
-  "title": "string",
-  "date": "YYYY-MM-DD",
-  "tags": ["string"],
-  "summary": "string"
-}
-```
-
-## 🚨 Tratamento de Erros
-
-A API retorna códigos HTTP apropriados:
-
-- **200 OK**: Requisição bem-sucedida
-- **400 Bad Request**: Parâmetros inválidos
-- **404 Not Found**: Recurso não encontrado
-- **500 Internal Server Error**: Erro interno do servidor
-
-Exemplo de resposta de erro:
-```json
-{
-  "timestamp": "2024-01-15T10:30:00",
-  "status": 404,
-  "error": "Not Found",
-  "message": "Post não encontrado"
-}
-```
-
-## 🔧 Desenvolvimento
-
-### Build do Projeto
-```bash
-./mvnw clean package
-```
-
-O JAR será gerado em `target/blog-0.0.1-SNAPSHOT.jar`
-
-### Executar JAR
-```bash
-java -jar target/blog-0.0.1-SNAPSHOT.jar
-```
-
-## 📄 Licença
-
+## Licença
 MIT
-
----
-
-**Nota:** Certifique-se de que o CouchDB está configurado e acessível antes de iniciar a aplicação. A estrutura esperada no CouchDB inclui uma view `by_date` no design document `posts`.

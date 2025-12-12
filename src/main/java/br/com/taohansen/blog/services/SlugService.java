@@ -45,7 +45,7 @@ public class SlugService {
             return false;
         }
 
-        if (slug.length() < MIN_SLUG_LENGTH || slug.length() > MAX_SLUG_LENGTH) {
+        if (slug.length() > MAX_SLUG_LENGTH) {
             return false;
         }
 

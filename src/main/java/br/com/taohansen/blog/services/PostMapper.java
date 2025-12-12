@@ -39,6 +39,7 @@ public class PostMapper {
 
     /**
      * Mapeia uma linha da resposta do CouchDB para um objeto Post completo.
+     *
      * @param row A linha da resposta do CouchDB
      * @return Post mapeado
      */
@@ -50,15 +51,16 @@ public class PostMapper {
 
         Map<String, Object> doc = row.getDoc();
         Post post = new Post();
-        
+
         mapCommonFields(doc, post);
         post.setContent(getStringSafely(doc, FIELD_CONTENT));
-        
+
         return post;
     }
 
     /**
      * Mapeia uma linha da resposta do CouchDB para um objeto PostMetadata.
+     *
      * @param row A linha da resposta do CouchDB
      * @return PostMetadata mapeado
      */
@@ -70,15 +72,16 @@ public class PostMapper {
 
         Map<String, Object> doc = row.getDoc();
         PostMetadata meta = new PostMetadata();
-        
+
         mapCommonFields(doc, meta);
-        
+
         return meta;
     }
 
     /**
      * Mapeia campos comuns entre Post e PostMetadata.
-     * @param doc O documento do CouchDB
+     *
+     * @param doc    O documento do CouchDB
      * @param target O objeto de destino (Post ou PostMetadata)
      */
     private void mapCommonFields(Map<String, Object> doc, Object target) {
@@ -87,7 +90,7 @@ public class PostMapper {
         if (id == null) {
             id = getStringSafely(doc, FIELD_ID);
         }
-        
+
         if (target instanceof Post post) {
             post.setId(id);
             post.setRevision(getStringSafely(doc, FIELD_REV));
@@ -114,6 +117,7 @@ public class PostMapper {
 
     /**
      * Obtém uma string de forma segura do mapa.
+     *
      * @param doc O documento
      * @param key A chave
      * @return A string ou null se não existir ou não for string
@@ -133,6 +137,7 @@ public class PostMapper {
     /**
      * Obtém uma lista de strings de forma segura do mapa.
      * Valida que todos os elementos são strings.
+     *
      * @param doc O documento
      * @param key A chave
      * @return A lista ou null se não existir ou não for lista de strings
@@ -166,6 +171,7 @@ public class PostMapper {
     /**
      * Faz o parse de uma data/hora de forma segura.
      * Suporta tanto LocalDateTime quanto LocalDate (para compatibilidade).
+     *
      * @param doc O documento
      * @param key A chave
      * @return A data/hora ou null se não existir ou não puder ser parseada
@@ -175,7 +181,7 @@ public class PostMapper {
         if (dateStr == null || dateStr.isBlank()) {
             return null;
         }
-        
+
         try {
             // Tentar parse como LocalDateTime primeiro (formato ISO com hora)
             if (dateStr.contains("T")) {
@@ -189,31 +195,37 @@ public class PostMapper {
             return null;
         }
     }
-    
+
     /**
      * Obtém um boolean de forma segura do mapa.
+     *
      * @param doc O documento
      * @param key A chave
      * @return O boolean ou false se não existir ou não for boolean
      */
     private Boolean getBooleanSafely(Map<String, Object> doc, String key) {
         Object value = doc.get(key);
-        if (value == null) {
-            return false; // Default: não é rascunho
-        }
-        if (value instanceof Boolean bool) {
-            return bool;
-        }
-        if (value instanceof String str) {
-            return Boolean.parseBoolean(str);
+        switch (value) {
+            case null -> {
+                return false; // Default: não é rascunho
+            }
+            case Boolean bool -> {
+                return bool;
+            }
+            case String str -> {
+                return Boolean.parseBoolean(str);
+            }
+            default -> {
+            }
         }
         log.warn("Campo '{}' não é um boolean, valor: {}", key, value);
         return false;
     }
-    
+
     /**
      * Mapeia um documento do CouchDB diretamente para um Post.
      * Usado quando buscamos um documento por ID.
+     *
      * @param doc O documento do CouchDB
      * @return Post mapeado
      */
@@ -226,12 +238,13 @@ public class PostMapper {
         Post post = new Post();
         mapCommonFields(doc, post);
         post.setContent(getStringSafely(doc, FIELD_CONTENT));
-        
+
         return post;
     }
-    
+
     /**
      * Mapeia um Post para um Map (documento do CouchDB).
+     *
      * @param post O post a ser convertido
      * @return Map representando o documento do CouchDB
      */
@@ -239,9 +252,9 @@ public class PostMapper {
         if (post == null) {
             throw new IllegalArgumentException("Post não pode ser nulo");
         }
-        
+
         Map<String, Object> doc = new java.util.HashMap<>();
-        
+
         // Campos obrigatórios do CouchDB
         if (post.getId() != null) {
             doc.put("_id", post.getId());
@@ -249,7 +262,7 @@ public class PostMapper {
         if (post.getRevision() != null) {
             doc.put("_rev", post.getRevision());
         }
-        
+
         // Campos do post
         doc.put("type", post.getType() != null ? post.getType() : "blog_post");
         doc.put("title", post.getTitle());
@@ -261,12 +274,13 @@ public class PostMapper {
         doc.put("content", post.getContent());
         doc.put("draft", post.getDraft() != null ? post.getDraft() : false);
         doc.put("image", toImageMap(post.getImage()));
-        
+
         return doc;
     }
 
     /**
      * Obtém a estrutura de imagem de forma segura do documento.
+     *
      * @param doc O documento do CouchDB
      * @return PostImage ou null se ausente ou inválida
      */
@@ -304,6 +318,7 @@ public class PostMapper {
 
     /**
      * Converte PostImage em mapa para persistência.
+     *
      * @param image objeto de imagem
      * @return mapa com url e attribution ou null se imagem for null
      */

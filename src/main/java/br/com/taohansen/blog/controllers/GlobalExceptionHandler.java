@@ -15,9 +15,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -148,7 +146,9 @@ public class GlobalExceptionHandler {
         return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error));
     }
 
-    /** Modelo padronizado de resposta de erro. */
+    /**
+     * Modelo padronizado de resposta de erro.
+     */
     @Data
     @Builder
     @JsonInclude(JsonInclude.Include.NON_NULL)

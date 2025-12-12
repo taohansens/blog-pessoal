@@ -15,7 +15,7 @@ import java.util.stream.Stream;
 
 /**
  * Configuração de CORS (Cross-Origin Resource Sharing).
- * 
+ * <p>
  * Permite que aplicações frontend em diferentes origens acessem a API.
  * Configuração segura seguindo melhores práticas.
  */
@@ -34,34 +34,34 @@ public class CorsConfig {
 
     /**
      * Configura o filtro CORS para a aplicação.
-     * 
+     *
      * @return Filtro CORS configurado
      */
     @Bean
     public CorsWebFilter corsWebFilter() {
         CorsConfiguration corsConfig = new CorsConfiguration();
-        
+
         List<String> origins = parseOrigins(allowedOrigins);
         corsConfig.setAllowedOrigins(origins);
-        
+
         log.info("CORS configurado com origens permitidas: {}", origins);
-        
+
         // Métodos HTTP permitidos
         corsConfig.setAllowedMethods(ALLOWED_METHODS);
-        
+
         // Headers permitidos (não usar "*" por segurança)
         corsConfig.setAllowedHeaders(ALLOWED_HEADERS);
-        
+
         // Headers expostos na resposta
         corsConfig.setExposedHeaders(Arrays.asList("Content-Type", "Content-Length"));
-        
+
         // Tempo de cache do preflight (OPTIONS)
         corsConfig.setMaxAge(MAX_AGE);
-        
+
         // Credenciais só permitidas se não for "*"
         boolean allowCredentials = !origins.contains("*");
         corsConfig.setAllowCredentials(allowCredentials);
-        
+
         if (allowCredentials) {
             log.info("CORS configurado para permitir credenciais");
         } else {
@@ -76,7 +76,7 @@ public class CorsConfig {
 
     /**
      * Parse das origens permitidas a partir da configuração.
-     * 
+     *
      * @param originsConfig String com origens separadas por vírgula
      * @return Lista de origens permitidas
      */
@@ -85,17 +85,17 @@ public class CorsConfig {
             log.warn("CORS configurado com '*' - permitindo todas as origens");
             return List.of("*");
         }
-        
+
         List<String> origins = Stream.of(originsConfig.split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isEmpty())
                 .collect(Collectors.toList());
-        
+
         if (origins.isEmpty()) {
             log.warn("Nenhuma origem CORS configurada, usando '*'");
             return List.of("*");
         }
-        
+
         return origins;
     }
 }

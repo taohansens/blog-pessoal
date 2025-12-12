@@ -30,9 +30,9 @@ public class JwtService {
 
     /**
      * Gera um token JWT para o usuário autenticado.
-     * 
-     * @param email Email do usuário
-     * @param login Login do usuário
+     *
+     * @param email   Email do usuário
+     * @param login   Login do usuário
      * @param isAdmin Se o usuário é administrador
      * @return Token JWT
      */
@@ -41,7 +41,7 @@ public class JwtService {
         claims.put("email", email);
         claims.put("login", login);
         claims.put("isAdmin", isAdmin);
-        
+
         return createToken(claims, email != null ? email : login);
     }
 
@@ -55,9 +55,9 @@ public class JwtService {
     private String createToken(Map<String, Object> claims, String subject) {
         Date now = new Date();
         Date expiration = new Date(now.getTime() + jwtExpiration);
-        
+
         SecretKey key = getSigningKey();
-        
+
         return Jwts.builder()
                 .claims(claims)
                 .subject(subject)
@@ -69,7 +69,7 @@ public class JwtService {
 
     /**
      * Valida se o token é válido (assinatura e expiração).
-     * 
+     *
      * @param token Token JWT
      * @return true se válido, false caso contrário
      */
@@ -79,17 +79,17 @@ public class JwtService {
                 log.debug("Token nulo ou vazio");
                 return false;
             }
-            
+
             // Verificar assinatura e extrair claims
             Claims claims = extractAllClaims(token);
-            
+
             // Verificar expiração diretamente das claims
             Date expiration = claims.getExpiration();
             if (expiration != null && expiration.before(new Date())) {
                 log.debug("Token expirado em: {}", expiration);
                 return false;
             }
-            
+
             log.debug("Token JWT válido");
             return true;
         } catch (io.jsonwebtoken.security.SignatureException e) {
@@ -153,8 +153,8 @@ public class JwtService {
     /**
      * Extrai uma claim específica do token.
      *
-     * @param token           JWT
-     * @param claimsResolver  função que lê a claim
+     * @param token          JWT
+     * @param claimsResolver função que lê a claim
      * @return valor da claim resolvida
      */
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {

@@ -17,7 +17,7 @@ import java.util.List;
 /**
  * Metadados de um post (versão reduzida sem conteúdo).
  * Usado em listagens e respostas paginadas para melhor performance.
- * 
+ * <p>
  * Segue o padrão de separação de concerns: dados vs metadados.
  */
 @Data
@@ -26,57 +26,57 @@ import java.util.List;
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class PostMetadata {
-    
+
     /**
      * ID único do post.
      */
     @NotBlank(message = "ID não pode ser vazio")
     @Size(max = 255, message = "ID não pode exceder 255 caracteres")
     private String id;
-    
+
     /**
      * Slug único do post.
      */
     @NotBlank(message = "Slug não pode ser vazio")
     @Size(min = 1, max = 200, message = "Slug deve ter entre 1 e 200 caracteres")
     private String slug;
-    
+
     /**
      * Título do post.
      */
     @NotBlank(message = "Título não pode ser vazio")
     @Size(min = 1, max = 500, message = "Título deve ter entre 1 e 500 caracteres")
     private String title;
-    
+
     /**
      * Data e hora de publicação.
      */
     @NotNull(message = "Data não pode ser nula")
     private LocalDateTime date;
-    
+
     /**
      * Data e hora da última atualização do post.
      * Null se o post nunca foi atualizado.
      */
     private LocalDateTime updatedAt;
-    
+
     /**
      * Indica se o post é um rascunho.
      */
     private Boolean draft;
-    
+
     /**
      * Lista de tags.
      */
     @Builder.Default
     private List<@NotBlank @Size(max = 50) String> tags = new ArrayList<>();
-    
+
     /**
      * Dados da imagem usada no frontend (opcional).
      */
     @Valid
     private PostImage image;
-    
+
     /**
      * Resumo do post.
      */

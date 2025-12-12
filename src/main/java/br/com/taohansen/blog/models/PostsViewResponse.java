@@ -10,23 +10,23 @@ import java.util.Map;
 /**
  * DTO de resposta da view do CouchDB.
  * Representa a estrutura de resposta padrão do CouchDB para queries de views.
- * 
+ * <p>
  * Este é um DTO de integração e não deve ser usado diretamente na API pública.
  */
 @Data
 public class PostsViewResponse {
-    
+
     /**
      * Número total de linhas na view (antes da paginação).
      */
     @JsonProperty("total_rows")
     private int totalRows;
-    
+
     /**
      * Offset usado na paginação.
      */
     private int offset;
-    
+
     /**
      * Lista de linhas retornadas pela view.
      */
@@ -41,17 +41,17 @@ public class PostsViewResponse {
          * ID do documento.
          */
         private String id;
-        
+
         /**
          * Chave usada na view (pode ser qualquer tipo).
          */
         private String key;
-        
+
         /**
          * Valor calculado pela view (opcional).
          */
         private Value value;
-        
+
         /**
          * Documento completo (quando include_docs=true).
          */

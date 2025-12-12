@@ -62,9 +62,6 @@ public class PagedPost {
      * @return Número total de páginas (0 se não houver itens)
      */
     public int getTotalPages() {
-        if (size == 0) {
-            return 0;
-        }
         return (int) Math.ceil((double) total / size);
     }
 

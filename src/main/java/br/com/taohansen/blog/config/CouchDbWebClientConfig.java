@@ -25,7 +25,6 @@ import java.util.Base64;
 @Slf4j
 public class CouchDbWebClientConfig {
 
-    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
     private static final String BASIC_AUTH_PREFIX = "Basic ";
 
     @Value("${couchdb.uri}")
@@ -120,11 +119,9 @@ public class CouchDbWebClientConfig {
      * O timeout real é configurado no WebClient via HttpClient.
      */
     private ExchangeFilterFunction timeoutFilter(Duration timeout) {
-        return ExchangeFilterFunction.ofRequestProcessor(request -> {
-            // O timeout é tratado pelo HttpClient do WebClient
-            // Este filtro apenas loga se necessário
-            return Mono.just(request);
-        });
+        // O timeout é tratado pelo HttpClient do WebClient
+        // Este filtro apenas loga se necessário
+        return ExchangeFilterFunction.ofRequestProcessor(Mono::just);
     }
 
     /**

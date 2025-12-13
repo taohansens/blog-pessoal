@@ -45,6 +45,8 @@ cors:
 
 # Configuração do administrador
 app:
+  frontend:
+    url: ${GITHUB_OAUTH_REDIRECT_FRONTEND:http://localhost:3000}
   admin:
     email: ${ADMIN_EMAIL:taohansens}
 
